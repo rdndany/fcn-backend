@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("MONGO_URI")
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  name      String
+  image     String
+  coins     Coin[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Coin {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  symbol       String
+  slug         String
+  description  String
+  logo         String
+  croppedLogo  String
+  categories   String[]
+  socials      Socials
+  chain        String
+  dexProvider  String
+  presale      Presale
+  fairlaunch   Fairlaunch
+  address      String?
+  audit        Audit
+  kyc          Kyc
+  authorId     String   @db.ObjectId
+  author       User     @relation(fields: [authorId], references: [id])
+  launchDate   Int?
+  votesCount   Int      @default(0)
+  todayVotes   Int      @default(0)
+  price        Float    @default(0)
+  mkap         Float    @default(0)
+  price24h     Float    @default(0)
+  premium      Boolean  @default(false)
+  promoted     Boolean  @default(false)
+  votes        Vote[]
+  userVoted    Boolean
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Vote {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  coinId     String   @db.ObjectId
+  coin       Coin     @relation(fields: [coinId], references: [id])
+  ip_address String
+  organic    Boolean  @default(false)
+  created_at DateTime @default(now())
+}
+
+type Socials {
+  website     String?
+  telegram    String?
+  x           String?
+  discord     String?
+  youtube     String?
+  whitepaper  String?
+}
+
+type Presale {
+  enabled     Boolean   @default(false)
+  link        String?
+  softcap     Float?
+  hardcap     Float?
+  coin        String    @default("usdt")
+  timeStart   Int?
+  timeEnd     Int?
+}
+
+type Fairlaunch {
+  enabled     Boolean   @default(false)
+  link        String?
+}
+
+type Audit {
+  exist       Boolean   @default(false)
+  auditId     String
+}
+
+type Kyc {
+  exist       Boolean   @default(false)
+  kycId       String
+}
