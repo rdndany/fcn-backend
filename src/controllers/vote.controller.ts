@@ -5,6 +5,13 @@ import { HTTPSTATUS } from "../config/http.config";
 import { getClientIp } from "request-ip";
 import { BadRequestException } from "../utils/appError";
 import VoteModel from "../models/vote.model";
+import { getLogger } from "log4js";
+import {
+  CacheInvalidationScope,
+  invalidateCoinCaches,
+} from "../utils/coin.utils";
+
+const logger = getLogger("vote-controller");
 
 export const getByCoinId = asyncHandler(async (req: Request, res: Response) => {
   const { coin_id } = req.params;
@@ -24,39 +31,66 @@ export const getByCoinId = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-export const voteByCoinId = asyncHandler(
-  async (req: Request, res: Response): Promise<Response> => {
+export async function voteByCoinId(req: Request, res: Response): Promise<void> {
+  try {
     const { coin_id } = req.params;
     const userIp = getClientIp(req);
 
+    // logger.info("Attempting to record vote:", { coin_id });
+
     if (!userIp) {
-      throw new BadRequestException("IP address not found");
+      // logger.warn("IP address not found");
+      res.status(HTTPSTATUS.BAD_REQUEST).json({
+        success: false,
+        message: "IP address not found",
+      });
+      return;
     }
 
-    try {
-      const { vote, updatedCoin } = await createVoteByCoinId(coin_id, userIp);
-
-      return res.status(201).json({
-        message: "Vote successfully recorded",
-        vote,
-        updatedVotes: {
-          votes: updatedCoin.votes,
-          todayVotes: updatedCoin.todayVotes,
-        },
+    if (!coin_id) {
+      // logger.warn("Coin ID not provided");
+      res.status(HTTPSTATUS.BAD_REQUEST).json({
+        success: false,
+        message: "Coin ID is required",
       });
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        return res.status(400).json({
-          message: error.message,
-        });
-      }
-
-      return res.status(500).json({
-        message: "An unexpected error occurred.",
-      });
+      return;
     }
+
+    const { vote, updatedCoin } = await createVoteByCoinId(coin_id, userIp);
+
+    // Invalidate relevant caches
+    await invalidateCoinCaches(CacheInvalidationScope.UPDATE);
+
+    // logger.info("Successfully recorded vote:", {
+    //   coin_id,
+    //   updatedVotes: {
+    //     total: updatedCoin.votes,
+    //     today: updatedCoin.todayVotes,
+    //   },
+    // });
+
+    res.status(HTTPSTATUS.CREATED).json({
+      success: true,
+      message: "Vote successfully recorded",
+      vote,
+      updatedVotes: {
+        votes: updatedCoin.votes,
+        todayVotes: updatedCoin.todayVotes,
+      },
+    });
+  } catch (error) {
+    // logger.error("Error in voteByCoinId controller:", error);
+    const statusCode =
+      error instanceof Error && error.message.includes("already voted")
+        ? HTTPSTATUS.BAD_REQUEST
+        : HTTPSTATUS.INTERNAL_SERVER_ERROR;
+
+    res.status(statusCode).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to record vote",
+    });
   }
-);
+}
 
 export const hasVotedToday = asyncHandler(
   async (req: Request, res: Response): Promise<Response> => {

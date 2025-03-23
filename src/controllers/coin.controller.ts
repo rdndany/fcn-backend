@@ -1,177 +1,202 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../middlewares/asyncHandler.middleware";
 import {
+  coinBySlug,
+  deleteCoinById,
   getCoinsFiltered,
   getCoinsPromoted,
-  getEVMCoinPriceData,
-  getSOLCoinPriceData,
 } from "../services/coin.service";
 import { HTTPSTATUS } from "../config/http.config";
 import { fetchVotesToCoins } from "../services/vote.service";
 import { Types } from "mongoose";
 import { getAuth } from "@clerk/express";
-import UserModel from "../models/user.model";
-import CoinModel from "../models/coin.model";
-import slugify from "../utils/slugify";
-import { v4 } from "uuid";
-import {
-  getPublicIdFromUrl,
-  removeImageFromCloudinary,
-} from "../utils/removeImageCloudinary";
+import CoinModel, { CoinStatus } from "../models/coin.model";
 import cloudinary from "../config/cloudinary.config";
-import VoteModel from "../models/vote.model";
+import { CoinQueryParams, CreateCoinBody } from "../types/coin.types";
+import { processQueryParams } from "../services/query-params.service";
+import { buildCoinResponse } from "../utils/response-builders";
+import {
+  fetchCoinPriceData,
+  generateUniqueSlug,
+  validateAddressUniqueness,
+  invalidateCoinCaches,
+  CacheInvalidationScope,
+} from "../utils/coin.utils";
+import { getLogger } from "log4js";
+import { getClientIp } from "request-ip";
 
-export const getAllCoinsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    let {
-      pageSize = "25",
-      pageNumber = "1",
-      presale = "false",
-      fairlaunch = "false",
-      chain = [""],
-      audit = "false",
-      kyc = "false",
-      sortColumn = "todayVotes", // Default to 'votes'
-      sortDirection = "descending", // Default to 'descending'
-      selectedKeys = ["Today_best"],
-    } = req.query; // Default values
-    const userId: string = (req.query.userId as string) || "";
-    // Convert them to numbers
-    let size = parseInt(pageSize as string, 10);
-    let page = parseInt(pageNumber as string, 10);
+const logger = getLogger("coin-controller");
 
-    // Ensure valid page size and page number
-    if (isNaN(size) || size <= 0) size = 25; // Default size
-    if (isNaN(page) || page <= 0) page = 1; // Default page number
+export const getAllCoinsController = async (
+  req: CoinQueryParams,
+  res: Response
+): Promise<void> => {
+  try {
+    // Process and validate query parameters
+    const params = processQueryParams(req.query);
+    const ipAddress = getClientIp(req);
 
-    // Convert filters from strings to booleans
-    let isPresale = presale === "true"; // Convert "true" or "false" string to boolean
-    let isFairlaunch = fairlaunch === "true"; // Convert "true" or "false" string to boolean
-    let isAudit = audit === "true"; // Convert "true" or "false" string to boolean
-    let isKyc = kyc === "true"; // Convert "true" or "false" string to boolean
-
-    // Ensure sortColumn and sortDirection are strings
-    if (Array.isArray(sortColumn)) {
-      sortColumn = sortColumn[0]; // If it's an array, use the first value
+    if (!ipAddress) {
+      // logger.warn("Failed to extract client IP address");
+      res.status(HTTPSTATUS.BAD_REQUEST).json({
+        success: false,
+        message: "Invalid request: Could not determine client IP",
+      });
+      return;
     }
 
-    // Make sure selectedKeys is always an array (can be a single value or an array)
-    if (typeof selectedKeys === "string") {
-      selectedKeys = [selectedKeys];
-    }
+    // Log incoming filter parameters
+    // logger.info("Incoming filter parameters:", {
+    //   presale: params.isPresale,
+    //   fairlaunch: params.isFairlaunch,
+    //   chains: params.chains,
+    //   audit: params.isAudit,
+    //   kyc: params.isKyc,
+    // });
 
-    // Only override sortColumn if it's not provided in the query
-
-    // If sortColumn is NOT something custom, override based on selectedKeys
-    if (
-      !req.query.sortColumn || // no manual sort column provided
-      sortColumn === "votes" || // defaulting to votes
-      sortColumn === "todayVotes" // defaulting to todayVotes
-    ) {
-      if (Array.isArray(selectedKeys) && !selectedKeys.includes("Today_best")) {
-        sortColumn = "votes"; // All time best → votes
-      } else {
-        sortColumn = "todayVotes"; // Today best → todayVotes
-      }
-    }
-
-    if (Array.isArray(sortDirection)) {
-      sortDirection = sortDirection[0]; // If it's an array, use the first value
-    }
-
-    // Ensure they are strings, just in case the query parameters are parsed as other types.
-    sortColumn = String(sortColumn);
-    sortDirection = String(sortDirection);
-    // Handle chain filtering with a type check to ensure we can call .split
-    let chains: string[] = [];
-    if (typeof chain === "string" && chain.trim() !== "") {
-      chains = chain.split(",").map((item) => item.trim());
-    }
-
-    const rawIp = String(
-      req.headers["x-forwarded-for"] || req.socket.remoteAddress
-    );
-
-    const ipAddress = rawIp.split(",")[rawIp.split(",").length - 1].trim();
-
-    // Step 1: Fetch filtered coins, already sorted and paginated
+    // Fetch filtered coins with explicit boolean flags
     const filteredCoins = await getCoinsFiltered({
-      pageSize: size,
-      pageNumber: page,
-      presale: isPresale,
-      fairlaunch: isFairlaunch,
-      chains,
-      audit: isAudit,
-      kyc: isKyc,
-      sortColumn,
-      sortDirection,
+      ...params,
+      presale: Boolean(params.isPresale),
+      fairlaunch: Boolean(params.isFairlaunch),
+      audit: Boolean(params.isAudit),
+      kyc: Boolean(params.isKyc),
     });
 
-    const coinIds: Types.ObjectId[] = filteredCoins.coins.map(
-      (coin) => coin._id as Types.ObjectId
-    );
+    if (!filteredCoins || !filteredCoins.coins) {
+      // logger.warn("No coins found or invalid filter result");
+      res.status(HTTPSTATUS.NOT_FOUND).json({
+        success: false,
+        message: "No coins found",
+      });
+      return;
+    }
 
-    // Step 2: Get the user's favorite coin IDs (don't refetch all coins!)
-    let favoritedCoinIds: string[] = [];
+    // Extract coin IDs for vote processing
+    const coinIds = filteredCoins.coins.map((coin) => coin._id);
 
-    // Fix: Pass the filteredCoins.coins (promotedCoins) instead of allCoins
+    // Update coins with vote and favorite flags
     const coinsWithUpdatedFlags = await fetchVotesToCoins({
       coins: filteredCoins.coins,
-      favoritedCoinIds,
+      favoritedCoinIds: [],
       ipAddress,
       coinIds,
-      userId,
+      userId: params.userId,
     });
 
-    // Step 5: Return sorted, paginated, and updated coins
-    return res.status(HTTPSTATUS.OK).json({
-      message: "All coins fetched and votes updated successfully",
-      coins: coinsWithUpdatedFlags,
-      totalCount: filteredCoins.totalCount,
-      totalPages: filteredCoins.totalPages,
-      skip: filteredCoins.skip,
+    if (!coinsWithUpdatedFlags) {
+      // logger.error("Failed to update coin flags");
+      res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: "Failed to process coin data",
+      });
+      return;
+    }
+
+    // Build final response
+    const response = buildCoinResponse({
+      coinsWithUpdatedFlags,
+      ...filteredCoins,
+    });
+
+    // logger.info(
+    //   `Successfully retrieved ${coinsWithUpdatedFlags.length} coins with filters:`,
+    //   {
+    //     presale: params.isPresale,
+    //     fairlaunch: params.isFairlaunch,
+    //   }
+    // );
+
+    res.status(HTTPSTATUS.OK).json(response);
+  } catch (error) {
+    // logger.error("Error in getAllCoinsController:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to fetch coins",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
-);
+};
 
-export const getPromotedCoinsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const userId: string = (req.query.userId as string) || "";
+export const getPromotedCoinsController = async (
+  req: CoinQueryParams,
+  res: Response
+): Promise<void> => {
+  try {
+    // Process and validate query parameters
+    const params = processQueryParams(req.query);
+    const ipAddress = getClientIp(req);
 
-    const rawIp = String(
-      req.headers["x-forwarded-for"] || req.socket.remoteAddress
-    );
+    if (!ipAddress) {
+      // logger.warn("Failed to extract client IP address");
+      res.status(HTTPSTATUS.BAD_REQUEST).json({
+        success: false,
+        message: "Invalid request: Could not determine client IP",
+      });
+      return;
+    }
 
-    const ipAddress = rawIp.split(",")[rawIp.split(",").length - 1].trim();
+    // Fetch promoted coins
     const promotedCoins = await getCoinsPromoted();
 
-    const coinIds: Types.ObjectId[] = promotedCoins.map(
-      (coin) => coin._id as Types.ObjectId
-    );
+    if (!promotedCoins || promotedCoins.length === 0) {
+      // logger.info("No promoted coins found");
+      res.status(HTTPSTATUS.OK).json({
+        success: true,
+        message: "No promoted coins found",
+        promotedCoins: [],
+        totalCount: 0,
+      });
+      return;
+    }
 
-    // Step 2: Get the user's favorite coin IDs (don't refetch all coins!)
-    let favoritedCoinIds: string[] = [];
+    // Extract coin IDs for vote processing
+    const coinIds = promotedCoins.map((coin) => coin._id as Types.ObjectId);
 
+    // Update coins with vote and favorite flags
     const coinsWithUpdatedFlags = await fetchVotesToCoins({
       coins: promotedCoins,
-      favoritedCoinIds,
+      favoritedCoinIds: [],
       ipAddress,
       coinIds,
-      userId,
+      userId: params.userId,
     });
 
-    return res.status(HTTPSTATUS.OK).json({
-      message: "All coins promoted fetched successfully",
+    if (!coinsWithUpdatedFlags) {
+      // logger.error("Failed to update coin flags");
+      res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: "Failed to process coin data",
+      });
+      return;
+    }
+
+    // logger.info(
+    //   `Successfully retrieved ${coinsWithUpdatedFlags.length} promoted coins`
+    // );
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: "Promoted coins fetched successfully",
       promotedCoins: coinsWithUpdatedFlags,
+      totalCount: coinsWithUpdatedFlags.length,
+    });
+  } catch (error) {
+    // logger.error("Error in getPromotedCoinsController:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to fetch promoted coins",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
-);
+};
 
 export const uploadImage = asyncHandler(async (req: Request, res: Response) => {
   const { croppedLogo } = req.body;
 
   if (!croppedLogo) {
-    return res.status(400).json({ message: "No image data provided." });
+    return res
+      .status(HTTPSTATUS.BAD_REQUEST)
+      .json({ message: "No image data provided." });
   }
 
   try {
@@ -180,128 +205,286 @@ export const uploadImage = asyncHandler(async (req: Request, res: Response) => {
       folder: "logos", // Optional, still helps organize
     });
 
-    return res.status(200).json({
+    return res.status(HTTPSTATUS.OK).json({
       message: "Image uploaded successfully!",
       logoUrl: uploadResponse.secure_url,
       public_id: uploadResponse.public_id, // You can use this to delete the image later
     });
   } catch (error) {
     console.error("Cloudinary Upload Error:", error);
-    return res.status(500).json({ message: "Image upload failed.", error });
+    return res
+      .status(HTTPSTATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: "Image upload failed.", error });
   }
 });
 
-export const create = asyncHandler(async (req: Request, res: Response) => {
+export const create = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getAuth(req).userId;
+    const {
+      name,
+      symbol,
+      description,
+      categories,
+      address,
+      chain,
+      dexProvider,
+      croppedLogo,
+      launchDate,
+      socials,
+      presale,
+      fairlaunch,
+    } = req.body as CreateCoinBody;
 
-    const user = await UserModel.findById(userId);
-
-    if (!user) {
-      return res
+    // Validate required fields
+    if (!name || !symbol || !chain || !dexProvider) {
+      res
         .status(HTTPSTATUS.BAD_REQUEST)
-        .json({ message: "User not found" });
+        .json({ message: "Missing required fields" });
+      return;
     }
 
-    req.body.name = req.body.name.trim();
-
-    let slug = slugify(req.body.name);
-
-    const sameSlug = await CoinModel.findOne({ slug });
-    if (sameSlug) {
-      slug = `${slug}-${v4().split("-")[0]}`;
+    // Validate address uniqueness if provided
+    if (address) {
+      await validateAddressUniqueness(address);
     }
 
-    delete req.body.logo;
-    const croppedLogo = req.body.croppedLogo;
+    // Generate unique slug
+    const slug = await generateUniqueSlug(name);
 
-    // FETCH price data BEFORE creating the coin!
-    let priceData = { price: 0, price24h: 0, mkap: 0 };
+    // Fetch price data if address is provided
+    const priceData = address
+      ? await fetchCoinPriceData(chain, address)
+      : {
+          price: 0,
+          price24h: 0,
+          mkap: 0,
+          liquidity: 0,
+        };
 
-    const chain = req.body.chain;
-    const address = req.body.address;
-
-    // Only fetch price data if both address and chain exist
-    if (address && chain) {
-      if (chain === "sol") {
-        priceData = await getSOLCoinPriceData(address);
-      } else {
-        priceData = await getEVMCoinPriceData(address, chain);
-      }
-    }
-
-    const newCoin = new CoinModel({
-      author: user._id,
+    // Create new coin
+    const newCoin = await CoinModel.create({
+      name,
+      symbol,
+      description,
+      categories,
+      address: address?.trim(),
+      chain,
+      dexProvider,
       slug,
       logo: croppedLogo,
-      ...req.body,
+      croppedLogo,
+      launchDate,
+      socials,
+      presale,
+      fairlaunch,
+      author: userId, // Set author to userId from auth
+      ...priceData,
       votes: 0,
       todayVotes: 0,
-      price: priceData.price,
-      price24h: priceData.price24h,
-      mkap: priceData.mkap,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      status: "pending",
     });
 
-    const coin = await newCoin.save();
+    // Invalidate caches
+    await invalidateCoinCaches(CacheInvalidationScope.CREATE);
 
-    return res.status(HTTPSTATUS.OK).json(coin);
-  } catch (error: any) {
-    console.error("Error in create coin:", error);
-    return res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
-      message: "An error occurred while creating the coin.",
-      error: error.message || error,
-    });
-  }
-});
-
-export const deleteCoin = asyncHandler(async (req: Request, res: Response) => {
-  const userId = getAuth(req).userId;
-
-  const user = await UserModel.findById(userId);
-
-  if (!user) {
-    return res
-      .status(HTTPSTATUS.BAD_REQUEST)
-      .json({ message: "User not found" });
-  }
-
-  // Find the coin to delete
-  const deletedCoin = await CoinModel.findOneAndDelete({
-    _id: req.params.coinId,
-    author: user._id,
-  });
-
-  if (!deletedCoin) {
-    return res
-      .status(HTTPSTATUS.FORBIDDEN)
-      .json("You can delete only your coin");
-  }
-
-  // ✅ Delete votes associated with the coin
-  try {
-    await VoteModel.deleteMany({ coin_id: deletedCoin._id });
-    console.log(`Deleted votes for coin ${deletedCoin._id}`);
+    res.status(HTTPSTATUS.CREATED).json(newCoin);
   } catch (error) {
-    console.error("Error deleting votes for coin:", error);
-    // Optional: Return an error if you want to block on this
-    // return res.status(500).json("Failed to delete votes for coin");
+    console.error("Error in create coin:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      message: error instanceof Error ? error.message : "Internal server error",
+    });
   }
+};
 
-  // Check if croppedLogo exists and remove it from Cloudinary
-  if (deletedCoin.croppedLogo) {
-    const publicId = getPublicIdFromUrl(deletedCoin.croppedLogo);
+export const update = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = getAuth(req).userId;
+    const role = getAuth(req).sessionClaims?.role;
+    const isAdmin = role === "admin";
+    const updates = req.body as Partial<CreateCoinBody>;
 
-    if (publicId) {
-      try {
-        // Call the remove function from the utility file
-        await removeImageFromCloudinary(publicId);
-      } catch (error) {
-        return res.status(500).json("Failed to delete image from Cloudinary");
-      }
-    } else {
-      console.error("Invalid public_id extracted from URL.");
+    // Find coin
+    const slug = req.params.slug;
+    const coin = await CoinModel.findOne({ slug });
+    if (!coin) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({
+        success: false,
+        message: "Coin not found",
+      });
+      return;
     }
-  }
 
-  return res.status(HTTPSTATUS.OK).json("Coin has been deleted");
-});
+    // Check if user has permission to edit this coin
+    if (!isAdmin && coin.author !== userId) {
+      res.status(HTTPSTATUS.FORBIDDEN).json({
+        success: false,
+        message: "You are not authorized to edit this coin",
+      });
+      return;
+    }
+
+    // Validate address uniqueness if changed
+    if (updates.address && updates.address !== coin.address) {
+      const existingCoin = await CoinModel.findOne({
+        address: updates.address.trim(),
+        _id: { $ne: coin._id },
+      });
+      if (existingCoin) {
+        res.status(HTTPSTATUS.BAD_REQUEST).json({
+          success: false,
+          message: "Coin with this address already exists",
+        });
+        return;
+      }
+    }
+
+    // Generate new slug if name changed
+    const newSlug = updates.name
+      ? await generateUniqueSlug(updates.name, coin._id.toString())
+      : coin.slug;
+
+    // Fetch updated price data if address or chain changed
+    const shouldUpdatePriceData =
+      (updates.address && updates.address !== coin.address) ||
+      (updates.chain && updates.chain !== coin.chain);
+
+    const priceData = shouldUpdatePriceData
+      ? await fetchCoinPriceData(
+          updates.chain || coin.chain,
+          updates.address || coin.address
+        )
+      : {
+          price: coin.price,
+          price24h: coin.price24h,
+          mkap: coin.mkap,
+          liquidity: coin.liquidity,
+        };
+
+    // Prepare update fields
+    const updatedFields = {
+      ...updates,
+      name: updates.name,
+      symbol: updates.symbol,
+      description: updates.description,
+      address: updates.address?.trim(),
+      slug: newSlug,
+      logo: updates.croppedLogo || coin.logo,
+      ...priceData,
+      // Only allow status change if user is admin
+      status: CoinStatus.PENDING,
+      updatedAt: new Date(),
+    };
+
+    // Update coin
+    const updatedCoin = await CoinModel.findOneAndUpdate(
+      { slug },
+      updatedFields,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    // Invalidate caches
+    await invalidateCoinCaches(CacheInvalidationScope.UPDATE);
+
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: "Coin updated successfully",
+      coin: updatedCoin,
+    });
+  } catch (error) {
+    console.error("Error in update coin:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Internal server error",
+    });
+  }
+};
+
+export const deleteCoin = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = getAuth(req).userId;
+    const role = getAuth(req).sessionClaims?.role;
+
+    // Validate user
+    if (!userId) {
+      res.status(HTTPSTATUS.BAD_REQUEST).json({ message: "User not found" });
+      return;
+    }
+
+    // Check if user is admin
+    const isAdmin = role === "admin";
+
+    // Find the coin first to verify ownership
+    const coin = await CoinModel.findById(req.params.coinId);
+    if (!coin) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
+      return;
+    }
+
+    // If not admin, verify ownership
+    if (!isAdmin && coin.author !== userId) {
+      res.status(HTTPSTATUS.FORBIDDEN).json({
+        message: "You are not authorized to delete this coin",
+      });
+      return;
+    }
+
+    // Delete coin and associated resources
+    const success = await deleteCoinById(req.params.coinId);
+
+    if (!success) {
+      res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+        message: "Failed to delete coin",
+      });
+      return;
+    }
+
+    // Invalidate caches
+    await invalidateCoinCaches(CacheInvalidationScope.DELETE);
+
+    res.status(HTTPSTATUS.OK).json({
+      message: "Coin has been deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error in delete coin:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      message: error instanceof Error ? error.message : "Internal server error",
+    });
+  }
+};
+
+export const getCoinBySlug = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { slug } = req.params;
+
+    if (!slug) {
+      res.status(HTTPSTATUS.BAD_REQUEST).json({ message: "Slug is required" });
+      return;
+    }
+
+    const coinDetails = await coinBySlug(slug);
+
+    if (!coinDetails) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
+      return;
+    }
+
+    res.status(HTTPSTATUS.OK).json(coinDetails);
+  } catch (error) {
+    // logger.error("Error in getCoinBySlug controller:", error);
+    res
+      .status(HTTPSTATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: "Failed to retrieve coin details" });
+  }
+};

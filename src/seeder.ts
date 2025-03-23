@@ -13,36 +13,7 @@ const seedCoins = async () => {
     console.log("✅ Connected to MongoDB");
 
     // Exclude specific coin IDs from deletion
-    const excludedCoinIds = [
-      "67d3e109d81c7a4de6ad5d75",
-      "67d3c7fbb1cb04d257dda2bc",
-      "67d4e1106a818aaba17e4838",
-      "67d3b53b315021a27076c816",
-      "67d3b771852c8542785cb0d7",
-      "67d3e58553e54f8800960f9b",
-      "67d3e62d53e54f8800960fe4",
-      "67d3e94858555fc644da9b84",
-      "67d3e98e58555fc644da9b94",
-      "67d428168aec4b9d3718f6b7",
-      "67d46ce01b1856ce4c167649",
-      "67d3e1edd81c7a4de6ad5dad",
-      "67d3e43f818f535669ef6f85",
-      "67d3eade58555fc644da9ba4",
-      "67d3eb96dbff3a5cf4513a6f",
-      "67d3f0f8f3c8f070fa00fb5a",
-      "67d41d8f63c64f5438f1de6d",
-      "67d41e2863c64f5438f1de88",
-      "67d41eaf63c64f5438f1de98",
-      "67d41f0f63c64f5438f1dec0",
-      "67d46a3984da5a97c5b2f9fc",
-      "67d46be71b1856ce4c167596",
-      "67d4b34b9ec2f6055937084e",
-      "67d4b5571c7e07d9426414b9",
-      "67d4b6d01c7e07d942641563",
-      "67d4b72f1c7e07d942641573",
-      "67d4e17c6a818aaba17e4886",
-      "67d56d26c01b6b58428edd43",
-    ];
+    const excludedCoinIds = ["67da191e6c742ca65bdf9da0"];
 
     // Clear existing coins except the ones we want to exclude
     await CoinModel.deleteMany({
@@ -54,16 +25,16 @@ const seedCoins = async () => {
     });
     console.log("🗑️ Existing coins (except excluded ones) deleted");
 
-    // Fetch the entire user document
-    const author = await UserModel.findById("user_2ty0xuA9LYlgq7DG7YglGCidWY1");
+    //Fetch the entire user document
+    const author = await UserModel.findById("user_2uW7bvjpqchkKmt7h3WdBtx3rS0");
 
     if (!author) {
       throw new Error("Author not found!");
     }
 
     // Generate and insert 100 coins in batches of 10
-    const totalCoins = 25000;
-    const batchSize = 250;
+    const totalCoins = 0;
+    const batchSize = 0;
 
     // Loop to generate and insert coins in batches of 10
     for (let i = 0; i < totalCoins; i += batchSize) {
@@ -139,7 +110,7 @@ const seedCoins = async () => {
             enabled: fairlaunchEnabled,
             link: fairlaunchEnabled ? faker.internet.url() : null, // Set to null if not enabled
           },
-          address: faker.finance.ethereumAddress(),
+          address: "",
           audit: {
             exist: false,
             auditId: "",

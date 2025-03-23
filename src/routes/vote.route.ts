@@ -1,9 +1,9 @@
 import { Router } from "express";
 import {
-  voteByCoinId,
   getByCoinId,
   hasVotedToday,
-} from "../controllers/vote.controler";
+  voteByCoinId,
+} from "../controllers/vote.controller";
 
 const voteRoutes = Router();
 

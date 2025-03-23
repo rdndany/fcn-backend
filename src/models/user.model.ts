@@ -5,6 +5,7 @@ export interface UserDocument extends Document {
   email: string;
   name: string;
   image: string;
+  role: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,6 +26,7 @@ const userSchema = new Schema<UserDocument>({
     trim: true,
     lowercase: true,
   },
+  role: { type: String, default: "user" },
   name: {
     type: String,
     required: true,

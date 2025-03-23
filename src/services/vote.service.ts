@@ -1,9 +1,13 @@
 import VoteModel, { VoteDocument } from "../models/vote.model";
-import mongoose, { Types } from "mongoose";
-import CoinModel, { CoinDocument } from "../models/coin.model";
+import mongoose from "mongoose";
+import CoinModel, { CoinDocument, CoinStatus } from "../models/coin.model";
 import { getLogger } from "log4js";
 import { getFavoritedCoinIds } from "./favorites.service";
-import { AddVoteAFlagsParams, Coin, UpdatedCoin } from "../@types/coin.types";
+import { AddVoteAFlagsParams, Coin, UpdatedCoin } from "../types/coin.types";
+import {
+  CacheInvalidationScope,
+  invalidateCoinCaches,
+} from "../utils/coin.utils";
 
 const logger = getLogger("votes");
 
@@ -25,52 +29,82 @@ export const createVoteByCoinId = async (
     throw new Error("coin_id and ip_address are required");
   }
 
+  if (!mongoose.Types.ObjectId.isValid(coin_id)) {
+    throw new Error("Invalid coin_id format");
+  }
+
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
 
-  // Check if the user has already voted today for this coin
-  const existingVote = await VoteModel.findOne({
-    coin_id,
-    ip_address: userIp,
-    created_at: { $gte: todayStart },
-  });
+  logger.info("Processing vote request:", { coin_id, userIp });
 
-  const coin = await CoinModel.findById(coin_id);
-  if (!coin) {
-    throw new Error("Coin not found");
-  }
+  try {
+    // First, check if the coin exists and is approved
+    const coin = await CoinModel.findById(coin_id);
+    if (!coin) {
+      throw new Error("Coin not found");
+    }
 
-  if (existingVote) {
-    throw new Error(`You have already voted today for ${coin.name}.`);
-  }
+    // Check if the coin's status is APPROVED before allowing the vote
+    if (coin.status !== CoinStatus.APPROVED) {
+      throw new Error(`Cannot vote for ${coin.name} as it is not approved.`);
+    }
 
-  // 1. Create the vote record
-  const vote = await VoteModel.create({
-    coin_id,
-    ip_address: userIp,
-    organic: true,
-    created_at: new Date(),
-  });
+    // Check if the user has already voted today for this coin
+    const existingVote = await VoteModel.findOne({
+      coin_id,
+      ip_address: userIp,
+      created_at: { $gte: todayStart },
+    });
 
-  // 2. Increment the votes & todayVotes counters atomically
-  const updatedCoin = await CoinModel.findOneAndUpdate(
-    { _id: coin_id },
-    {
-      $inc: {
-        votes: 1,
-        todayVotes: 1,
+    if (existingVote) {
+      throw new Error(`You have already voted today for ${coin.name}.`);
+    }
+
+    // Create the vote record first
+    const vote = await VoteModel.create({
+      coin_id,
+      ip_address: userIp,
+      organic: true,
+      created_at: new Date(),
+    });
+
+    // Then update the coin's vote counts
+    const updatedCoin = await CoinModel.findOneAndUpdate(
+      { _id: coin_id },
+      {
+        $inc: {
+          votes: 1,
+          todayVotes: 1,
+        },
       },
-    },
-    { new: true }
-  );
+      { new: true }
+    );
 
-  if (!updatedCoin) {
-    throw new Error("Failed to update the coin vote count");
+    if (!updatedCoin) {
+      // If coin update fails, we should clean up the vote record
+      await VoteModel.deleteOne({ _id: vote._id });
+      throw new Error("Failed to update the coin vote count");
+    }
+
+    // Invalidate caches
+    await invalidateCoinCaches(CacheInvalidationScope.VOTE);
+
+    logger.info("Successfully recorded vote:", {
+      coin_id,
+      coinName: coin.name,
+      userIp,
+      updatedVotes: {
+        total: updatedCoin.votes,
+        today: updatedCoin.todayVotes,
+      },
+    });
+
+    return { vote, updatedCoin };
+  } catch (error) {
+    logger.error("Error in createVoteByCoinId:", error);
+    throw error;
   }
-
-  logger.warn(`${userIp} successfully voted for ${coin_id}`);
-
-  return { vote, updatedCoin };
 };
 
 export async function fetchVotesToCoins({

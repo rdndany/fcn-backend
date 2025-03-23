@@ -1,7 +1,11 @@
 import mongoose, { Document, Types, Schema } from "mongoose";
 import { UserDocument } from "./user.model";
-import { boolean } from "zod";
-import { EvmAddressInput } from "@moralisweb3/common-evm-utils";
+
+export enum CoinStatus {
+  PENDING = "pending",
+  APPROVED = "approved",
+  DENIED = "denied",
+}
 
 export interface CoinDocument extends Document {
   _id: Types.ObjectId;
@@ -25,8 +29,8 @@ export interface CoinDocument extends Document {
   presale: {
     enabled: boolean;
     link?: string;
-    softcap?: number;
-    hardcap?: number;
+    softcap?: string;
+    hardcap?: string;
     coin: string;
     timeStart?: number | null;
     timeEnd?: number | null;
@@ -44,15 +48,17 @@ export interface CoinDocument extends Document {
     exist: boolean;
     auditId: string;
   };
-  author: UserDocument | mongoose.Types.ObjectId;
+  author: UserDocument | mongoose.Types.ObjectId | string;
   launchDate?: number | null;
   votes: number;
   userVoted: boolean;
   todayVotes: number;
   price: number;
   mkap: number;
+  liquidity?: number;
   price24h: number;
   premium: boolean;
+  status: CoinStatus;
   promoted: boolean;
   isFavorited: boolean;
 }
@@ -116,8 +122,8 @@ const coinSchema = new Schema<CoinDocument>(
         },
         default: null, // Set default to null
       },
-      softcap: { type: Number, min: 0, default: null },
-      hardcap: { type: Number, min: 0, default: null },
+      softcap: { type: String, min: 0, default: null },
+      hardcap: { type: String, min: 0, default: null },
       coin: { type: String, required: true, default: "usdt" },
       timeStart: { type: Number, default: null },
       timeEnd: { type: Number, default: null },
@@ -160,12 +166,18 @@ const coinSchema = new Schema<CoinDocument>(
     userVoted: { type: Boolean },
     todayVotes: { type: Number },
     price: { type: Number, default: 0 },
+    liquidity: { type: Number, default: 0 },
     mkap: { type: Number, default: 0 },
     price24h: {
       type: Number,
       default: 0,
     },
     premium: { type: Boolean, default: false },
+    status: {
+      type: String, // Use type: String for enums
+      enum: Object.values(CoinStatus), // Enforce enum values in the schema
+      default: CoinStatus.PENDING, // Default status if not specified
+    },
     promoted: { type: Boolean, default: false },
     isFavorited: { type: Boolean },
   },

@@ -1,13 +1,17 @@
 import { Router } from "express";
+
+import { checkAuth } from "../middlewares/clerkAuth.middleware";
+import multer from "multer";
+import { checkAdminAuth } from "../middlewares/adminAuth.middleware";
 import {
   create,
   deleteCoin,
   getAllCoinsController,
+  getCoinBySlug,
   getPromotedCoinsController,
+  update,
   uploadImage,
 } from "../controllers/coin.controller";
-import { checkAuth } from "../middlewares/clerkAuth.middleware";
-import multer from "multer";
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
@@ -17,7 +21,11 @@ coinRoutes.get("/all", getAllCoinsController);
 
 coinRoutes.get("/promoted", getPromotedCoinsController);
 
+coinRoutes.get("/:slug", getCoinBySlug);
+
 coinRoutes.post("/", checkAuth, create);
+
+coinRoutes.patch("/:slug", update);
 
 coinRoutes.delete("/:coinId", checkAuth, deleteCoin);
 

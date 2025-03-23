@@ -7,140 +7,243 @@ import FavoritesModel from "../models/favorites.model";
 import { Types } from "mongoose";
 import { fetchVotesToCoins } from "../services/vote.service";
 import CoinModel from "../models/coin.model";
+import { getLogger } from "log4js";
+import { redisClient } from "../config/redis.config";
+import {
+  CacheInvalidationScope,
+  invalidateCoinCaches,
+} from "../utils/coin.utils";
+import { getClientIp } from "request-ip";
+
+const logger = getLogger("favorites-controller");
 
 // Add this route in your backend API
-export const favoriteCoinController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { coinId } = req.params; // Coin ID to favorite/unfavorite
-
+export async function favoriteCoinController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const { coinId } = req.params;
     const userId = getAuth(req).userId;
 
+    // logger.info("Attempting to update favorite status:", { coinId, userId });
+
     if (!coinId || !userId) {
-      return res.status(400).json({ message: "Missing required parameters" });
+      // logger.warn("Missing required parameters:", { coinId, userId });
+      res.status(400).json({
+        success: false,
+        message: "Missing required parameters",
+      });
+      return;
     }
 
-    try {
-      // Convert coinId to ObjectId
-      const coinObjectId = new Types.ObjectId(coinId);
-      // Check if the user already has the coin in favorites
-      const existingFavorite = await FavoritesModel.findOne({
+    // Convert coinId to ObjectId
+    const coinObjectId = new Types.ObjectId(coinId);
+
+    // Check if the user already has the coin in favorites
+    const existingFavorite = await FavoritesModel.findOne({
+      user_id: userId,
+      coin_id: coinId,
+    }).lean();
+
+    if (existingFavorite) {
+      // If already favorited, remove it (unfavorite)
+      // logger.info("Removing coin from favorites:", { coinId, userId });
+      await FavoritesModel.deleteOne({
         user_id: userId,
         coin_id: coinId,
       });
-
-      if (existingFavorite) {
-        // If already favorited, remove it (unfavorite)
-        await FavoritesModel.deleteOne({
-          user_id: userId,
-          coin_id: coinId,
-        });
-      } else {
-        // If not favorited, add it to favorites
-        const newFavorite = new FavoritesModel({
-          user_id: userId,
-          coin_id: coinId,
-        });
-        await newFavorite.save();
-      }
-
-      // After adding/removing from favorites, update the isFavorited flag in coins
-      await updateIsFavoritedFlag([coinObjectId], userId);
-
-      return res
-        .status(200)
-        .json({ message: "Favorite status updated successfully" });
-    } catch (error) {
-      console.error("Error updating favorite:", error);
-      return res.status(500).json({ message: "Error updating favorite" });
+    } else {
+      // If not favorited, add it to favorites
+      // logger.info("Adding coin to favorites:", { coinId, userId });
+      const newFavorite = new FavoritesModel({
+        user_id: userId,
+        coin_id: coinId,
+      });
+      await newFavorite.save();
     }
-  }
-);
 
-export const getUserFavorites = asyncHandler(
-  async (req: Request, res: Response): Promise<Response> => {
-    const userId = getAuth(req).userId; // Get the user ID from the auth
+    // After adding/removing from favorites, update the isFavorited flag in coins
+    await updateIsFavoritedFlag([coinObjectId], userId);
+
+    // Invalidate relevant caches using the centralized cache invalidation function
+    await invalidateCoinCaches(CacheInvalidationScope.FAVORITE);
+
+    // logger.info("Successfully updated favorite status:", {
+    //   coinId,
+    //   userId,
+    //   action: existingFavorite ? "unfavorited" : "favorited",
+    // });
+
+    res.status(200).json({
+      success: true,
+      message: `Coin ${
+        existingFavorite ? "unfavorited" : "favorited"
+      } successfully`,
+      isFavorited: !existingFavorite,
+    });
+  } catch (error) {
+    // logger.error("Error in favoriteCoinController:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update favorite status",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+}
+
+export async function getUserFavorites(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const userId = getAuth(req).userId;
+    // logger.info("Attempting to fetch user favorites:", { userId });
 
     if (!userId) {
-      return res
-        .status(HTTPSTATUS.BAD_REQUEST)
-        .json({ message: "User ID is required" });
+      // logger.warn("No user ID provided");
+      res.status(HTTPSTATUS.BAD_REQUEST).json({
+        success: false,
+        message: "User ID is required",
+      });
+      return;
     }
 
-    try {
-      // Fetch the favorite coins for the given user, populate the 'coin_id' field with coin details
-      const favorites = await FavoritesModel.find({ user_id: userId })
-        .populate("coin_id") // Populate the coin data (assuming coin_id is the reference to the Coin model)
-        .exec();
+    // Get client IP address
+    const ipAddress = getClientIp(req);
+    if (!ipAddress) {
+      // logger.warn("Failed to extract client IP address");
+      res.status(HTTPSTATUS.BAD_REQUEST).json({
+        success: false,
+        message: "Invalid request: Could not determine client IP",
+      });
+      return;
+    }
 
-      if (!favorites.length) {
-        return res.status(HTTPSTATUS.OK).json({
-          message: "No favorites found for this user",
-          favorites: [],
-        });
-      }
+    // Fetch the favorite coins for the given user
+    const favorites = await FavoritesModel.find({ user_id: userId })
+      .populate("coin_id")
+      .lean();
 
-      // Extract the coin data (populate 'coin_id')
-      const coins = favorites.map((favorite) => favorite.coin_id);
+    // Generate cache key with correct format
+    const cacheKey = `userFavorites:${userId}:cacheData`;
 
-      const coinIds: Types.ObjectId[] = coins.map(
-        (coin) => coin._id as Types.ObjectId
-      );
+    // Try cache first
+    const cachedData = await redisClient.get(cacheKey);
+    if (cachedData) {
+      const parsedCache = JSON.parse(cachedData);
+      // logger.info("Cache hit for user favorites:", {
+      //   userId,
+      //   favoritedCount: parsedCache.favoritedCoinIds.length,
+      // });
+      res.status(HTTPSTATUS.OK).json({
+        success: true,
+        message: "Favorites fetched from cache",
+        favorites: parsedCache.favorites,
+        favoritedCoinIds: parsedCache.favoritedCoinIds,
+      });
+      return;
+    }
 
-      const rawIp = String(
-        req.headers["x-forwarded-for"] || req.socket.remoteAddress
-      );
-
-      const ipAddress = rawIp.split(",")[rawIp.split(",").length - 1].trim();
-
-      // After updating the votes, fetch the updated coins data again
-      const updatedCoins = await CoinModel.find({
-        _id: { $in: coinIds },
-      })
-        .select({
-          logo: 1,
-          name: 1,
-          symbol: 1,
-          slug: 1,
-          price: 1,
-          price24h: 1,
-          mkap: 1,
-          chain: 1,
-          premium: 1,
-          audit: 1,
-          kyc: 1,
-          launchDate: 1,
-          presale: 1,
-          fairlaunch: 1,
-          todayVotes: 1,
-          votes: 1,
-          userVoted: 1,
-          isFavorited: 1,
-        })
-        .lean()
-        .sort({ votes: -1 })
-        .exec();
-
-      // Step 2: Get the user's favorite coin IDs (don't refetch all coins!)
-      let favoritedCoinIds: string[] = [];
-
-      const coinsWithUpdatedFlags = await fetchVotesToCoins({
-        coins: updatedCoins,
-        favoritedCoinIds,
-        ipAddress,
-        coinIds,
+    if (!favorites.length) {
+      // logger.info("No favorites found for user:", { userId });
+      // Cache empty favorites
+      const emptyCache = {
+        favorites: [],
+        favoritedCoinIds: [],
         userId,
+        timestamp: Date.now(),
+      };
+      await redisClient.setex(cacheKey, 300, JSON.stringify(emptyCache));
+
+      res.status(HTTPSTATUS.OK).json({
+        success: true,
+        message: "No favorites found for this user",
+        favorites: [],
+        favoritedCoinIds: [],
       });
-      // Return the updated coins with the updated vote counts
-      return res.status(HTTPSTATUS.OK).json({
-        message: "Favorites fetched successfully",
-        favorites: coinsWithUpdatedFlags, // Send the populated and updated coin data
-      });
-    } catch (error) {
-      console.error(error);
-      return res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
-        message: "Failed to fetch favorites",
-        error: error instanceof Error ? error.message : error,
-      });
+      return;
     }
+
+    // Extract and process coin data
+    const coins = favorites.map((favorite) => favorite.coin_id);
+    const coinIds = coins.map((coin) => coin._id);
+    const favoritedCoinIds = coinIds.map((id) => id.toString());
+
+    // Fetch updated coin data with optimized field selection
+    const updatedCoins = await CoinModel.find({ _id: { $in: coinIds } })
+      .select({
+        logo: 1,
+        name: 1,
+        symbol: 1,
+        slug: 1,
+        price: 1,
+        price24h: 1,
+        mkap: 1,
+        chain: 1,
+        premium: 1,
+        audit: 1,
+        kyc: 1,
+        launchDate: 1,
+        presale: 1,
+        fairlaunch: 1,
+        todayVotes: 1,
+        votes: 1,
+        userVoted: 1,
+        isFavorited: 1,
+        address: 1,
+        status: 1,
+      })
+      .lean()
+      .sort({ votes: -1 });
+
+    // Update coins with vote and favorite flags
+    const coinsWithUpdatedFlags = await fetchVotesToCoins({
+      coins: updatedCoins,
+      favoritedCoinIds,
+      ipAddress,
+      coinIds,
+      userId,
+    });
+
+    if (!coinsWithUpdatedFlags) {
+      // logger.error("Failed to update coin flags");
+      res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: "Failed to process coin data",
+      });
+      return;
+    }
+
+    // Prepare cache data
+    const cacheData = {
+      favorites: coinsWithUpdatedFlags,
+      favoritedCoinIds,
+      userId,
+      timestamp: Date.now(),
+    };
+
+    // Cache the results for 5 minutes with the correct key format
+    await redisClient.setex(cacheKey, 300, JSON.stringify(cacheData));
+
+    // logger.info("Successfully fetched favorites for user:", {
+    //   userId,
+    //   coinCount: coinsWithUpdatedFlags.length,
+    //   favoritedCount: favoritedCoinIds.length,
+    // });
+
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: "Favorites fetched successfully",
+      favorites: coinsWithUpdatedFlags,
+      favoritedCoinIds,
+    });
+  } catch (error) {
+    // logger.error("Error in getUserFavorites controller:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to fetch favorites",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
   }
-);
+}

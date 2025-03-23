@@ -19,40 +19,37 @@ import voteRoutes from "./routes/vote.route";
 import LogMiddleware from "./middlewares/logMiddleware";
 import { startCronJobs } from "./crons/cronJobs";
 import favoritesRoutes from "./routes/favorites.route";
+import userRoutes from "./routes/user.route";
+import adminRoutes from "./routes/admin.route";
 
 const BASE_PATH = config.BASE_PATH;
 
 const logger = getLogger("server");
 const app = express();
-app.set("trust proxy", 1);
-const server = new http.Server(app);
+//app.set("trust proxy", 1);
+//const server = new http.Server(app);
 
 app.use(helmet());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json({ limit: "5mb" })); // Set the maximum payload size to 5 MB
 app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
-app.use(
-  session({
-    name: "session",
-    keys: [config.SESSION_SECRET],
-    maxAge: 24 * 60 * 60 * 1000,
-    secure: config.NODE_ENV === "production",
-    httpOnly: true,
-    sameSite: "lax",
-  })
-);
+// app.use(
+//   session({
+//     name: "session",
+//     keys: [config.SESSION_SECRET],
+//     maxAge: 24 * 60 * 60 * 1000,
+//     secure: config.NODE_ENV === "production",
+//     httpOnly: true,
+//     sameSite: "lax",
+//   })
+// );
 
 // const allowedOrigins = process.env.FRONTEND_ORIGIN
 //   ? process.env.FRONTEND_ORIGIN.split(",")
 //   : [];
 
-app.use(
-  cors({
-    origin: config.FRONTEND_ORIGIN,
-    credentials: true,
-  })
-);
+app.use(cors());
 
 // MIDDLEWARES
 app.use(clerkMiddleware());
@@ -79,8 +76,10 @@ app.use(LogMiddleware);
 // ROUTES
 app.post("/webhooks/clerk", clerkWebhooks);
 app.use(`${BASE_PATH}/coin`, coinRoutes);
+app.use(`${BASE_PATH}/user`, userRoutes);
 app.use(`${BASE_PATH}/vote`, voteRoutes);
 app.use(`${BASE_PATH}/favorites`, favoritesRoutes);
+app.use(`${BASE_PATH}/admin`, adminRoutes);
 
 // FOR ERRORS
 app.use(errorHandler);
@@ -92,9 +91,9 @@ app.use(errorHandler);
 //   await updateTodayVotesCount();
 // });
 
-server.listen(config.PORT, async () => {
+app.listen(config.PORT, async () => {
   logger.info(`🚀 Server running on port ${config.PORT} in ${config.NODE_ENV}`);
   await connectDatabase();
   // Start cron jobs after the database connection is established
-  startCronJobs();
+  startCronJobs(); // Initialize Redis connection
 });

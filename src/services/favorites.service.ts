@@ -1,54 +1,102 @@
-import CoinModel, { CoinDocument } from "../models/coin.model";
-import FavoritesModel, { FavoritesDocument } from "../models/favorites.model";
+import CoinModel from "../models/coin.model";
+import FavoritesModel from "../models/favorites.model";
 import { Types } from "mongoose";
+import { getLogger } from "log4js";
 
-export const updateIsFavoritedFlag = async (
-  coinIds: Types.ObjectId[], // Coin IDs to check for favorites
-  userId: string // User ID to check if they favorited the coins
-): Promise<void> => {
+const logger = getLogger("favorites-service");
+
+export async function updateIsFavoritedFlag(
+  coinIds: Types.ObjectId[],
+  userId: string
+): Promise<boolean> {
   try {
-    /** -------------------------------
-     * STEP 1: Get user's favorite coins
-     --------------------------------*/
-    const userFavorites = await FavoritesModel.find({
-      user_id: userId,
-      coin_id: { $in: coinIds }, // Only the coins the user might have favorited
+    logger.info("Attempting to update favorite flags:", {
+      coinCount: coinIds.length,
+      userId,
     });
 
-    /** -------------------------------
-     * STEP 2: Prepare bulk updates for isFavorited (true/false)
-     --------------------------------*/
-    const favoriteCoinIds = userFavorites.map((fav) => fav.coin_id.toString());
+    // Input validation
+    if (!coinIds.length || !userId) {
+      logger.warn("Invalid parameters for updating favorite flags:", {
+        hasCoinIds: Boolean(coinIds.length),
+        hasUserId: Boolean(userId),
+      });
+      return false;
+    }
 
-    const isFavoritedBulkOps = coinIds.map((coinId) => ({
+    // Find all favorites for the given user and coins in a single query
+    const favorites = await FavoritesModel.find({
+      user_id: userId,
+      coin_id: { $in: coinIds },
+    })
+      .select("coin_id")
+      .lean();
+
+    // Create a Set for O(1) lookup of favorited coin IDs
+    const favoritedCoinIds = new Set(
+      favorites.map((f) => f.coin_id.toString())
+    );
+
+    // Prepare bulk update operations
+    const bulkOps = coinIds.map((coinId) => ({
       updateOne: {
         filter: { _id: coinId },
         update: {
-          $set: { isFavorited: favoriteCoinIds.includes(coinId.toString()) },
+          $set: { isFavorited: favoritedCoinIds.has(coinId.toString()) },
         },
       },
     }));
 
-    // Execute bulk update if needed
-    if (isFavoritedBulkOps.length > 0) {
-      const result = await CoinModel.bulkWrite(isFavoritedBulkOps);
-    } else {
-      console.log("No updates needed for isFavorited.");
-    }
-  } catch (error) {
-    console.error("Error updating isFavorited flags:", error);
-    throw new Error("Failed to update isFavorited flags.");
-  }
-};
+    // Execute bulk update in a single operation
+    const result = await CoinModel.bulkWrite(bulkOps);
 
-export const getFavoritedCoinIds = async (
+    logger.info("Successfully updated favorite flags:", {
+      totalCoins: coinIds.length,
+      updatedCoins: result.modifiedCount,
+      favoritedCount: favoritedCoinIds.size,
+    });
+
+    return true;
+  } catch (error) {
+    logger.error("Error updating favorite flags:", {
+      error: error instanceof Error ? error.message : "Unknown error",
+      coinCount: coinIds.length,
+      userId,
+    });
+    return false;
+  }
+}
+
+export async function getFavoritedCoinIds(
   userId: string,
   coinIds: Types.ObjectId[]
-) => {
-  const favorites = await FavoritesModel.find({
-    user_id: userId,
-    coin_id: { $in: coinIds },
-  }).select("coin_id");
+): Promise<string[]> {
+  try {
+    logger.info("Fetching favorited coin IDs:", {
+      userId,
+      coinCount: coinIds.length,
+    });
 
-  return favorites.map((fav) => fav.coin_id.toString());
-};
+    const favorites = await FavoritesModel.find({
+      user_id: userId,
+      coin_id: { $in: coinIds },
+    })
+      .select("coin_id")
+      .lean();
+
+    const favoritedIds = favorites.map((fav) => fav.coin_id.toString());
+
+    logger.info("Successfully fetched favorited coin IDs:", {
+      userId,
+      foundCount: favoritedIds.length,
+    });
+
+    return favoritedIds;
+  } catch (error) {
+    logger.error("Error fetching favorited coin IDs:", {
+      error: error instanceof Error ? error.message : "Unknown error",
+      userId,
+    });
+    return [];
+  }
+}
