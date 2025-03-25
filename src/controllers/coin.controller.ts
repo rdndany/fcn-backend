@@ -22,10 +22,8 @@ import {
   invalidateCoinCaches,
   CacheInvalidationScope,
 } from "../utils/coin.utils";
-import { getLogger } from "log4js";
 import { getClientIp } from "request-ip";
-
-const logger = getLogger("coin-controller");
+import UserModel from "../models/user.model";
 
 export const getAllCoinsController = async (
   req: CoinQueryParams,
@@ -44,7 +42,6 @@ export const getAllCoinsController = async (
       });
       return;
     }
-
     // Log incoming filter parameters
     // logger.info("Incoming filter parameters:", {
     //   presale: params.isPresale,
@@ -221,6 +218,17 @@ export const uploadImage = asyncHandler(async (req: Request, res: Response) => {
 export const create = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getAuth(req).userId;
+
+    const user = await UserModel.findById(userId);
+
+    if (!user) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({
+        success: false,
+        message: "User not found",
+      });
+      return;
+    }
+
     const {
       name,
       symbol,

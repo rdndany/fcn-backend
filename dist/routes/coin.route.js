@@ -4,15 +4,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
-const coin_controller_1 = require("../controllers/coin.controller");
 const clerkAuth_middleware_1 = require("../middlewares/clerkAuth.middleware");
 const multer_1 = __importDefault(require("multer"));
+const coin_controller_1 = require("../controllers/coin.controller");
 const storage = multer_1.default.memoryStorage();
 const upload = (0, multer_1.default)({ storage: storage });
 const coinRoutes = (0, express_1.Router)();
 coinRoutes.get("/all", coin_controller_1.getAllCoinsController);
 coinRoutes.get("/promoted", coin_controller_1.getPromotedCoinsController);
+coinRoutes.get("/:slug", coin_controller_1.getCoinBySlug);
 coinRoutes.post("/", clerkAuth_middleware_1.checkAuth, coin_controller_1.create);
+coinRoutes.patch("/:slug", coin_controller_1.update);
 coinRoutes.delete("/:coinId", clerkAuth_middleware_1.checkAuth, coin_controller_1.deleteCoin);
 coinRoutes.post("/upload-image", upload.single("logo"), coin_controller_1.uploadImage);
 exports.default = coinRoutes;

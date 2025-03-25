@@ -2,8 +2,11 @@ import { Request, Response } from "express";
 
 import { HTTPSTATUS } from "../config/http.config";
 import CoinModel from "../models/coin.model";
-import { CoinQueryParams } from "../types/coin.types";
-import { processQueryParams } from "../services/query-params.service";
+import { CoinQueryParams, UserQueryParams } from "../types/coin.types";
+import {
+  processQueryParams,
+  processUserQueryParams,
+} from "../services/query-params.service";
 import {
   invalidateCoinCaches,
   CacheInvalidationScope,
@@ -12,17 +15,25 @@ import { getLogger } from "log4js";
 import {
   approveCoinById,
   declineCoinById,
+  deleteUserById,
   getCoinsAdminPromoted,
   getCoinsApproved,
   getCoinsFairlaunch,
   getCoinsPending,
   getCoinsPresale,
+  getUsers,
   promoteCoinById,
+  updateUserRoleById,
 } from "../services/admin.service";
 import {
   getEVMCoinPriceData,
   getSOLCoinPriceData,
 } from "../services/coin.service";
+import {
+  sendCoinApprovedMail,
+  sendCoinDeniedMail,
+} from "../services/email.service";
+import UserModel from "../models/user.model";
 
 const logger = getLogger("admin-controller");
 
@@ -300,11 +311,33 @@ export const approveCoin = async (
       return;
     }
 
-    const success = await approveCoinById(coinId);
+    // Fetch the approved coin
+    const approvedCoin = await approveCoinById(coinId);
 
-    if (!success) {
+    if (!approvedCoin) {
       res.status(HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
       return;
+    }
+
+    // Fetch user by coin.author (assuming coin.author is userId)
+    const user = await UserModel.findById(approvedCoin.author);
+
+    if (!user) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "User not found" });
+      return;
+    }
+
+    // Send the approval email to the user
+    const emailResult = await sendCoinApprovedMail(
+      user.email,
+      user.name,
+      approvedCoin.name,
+      approvedCoin.slug
+    );
+
+    if (!emailResult.success) {
+      console.error("Failed to send approval email:", emailResult.error);
+      // Log the error but continue with the coin approval process
     }
 
     // Invalidate relevant caches
@@ -312,7 +345,7 @@ export const approveCoin = async (
 
     res.status(HTTPSTATUS.OK).json({ message: "Coin approved successfully" });
   } catch (error) {
-    // logger.error("Error in approveCoin controller:", error);
+    console.error("Error in approveCoin controller:", error);
     res
       .status(HTTPSTATUS.INTERNAL_SERVER_ERROR)
       .json({ message: "Failed to approve coin" });
@@ -333,11 +366,31 @@ export const declineCoin = async (
       return;
     }
 
-    const coin = await declineCoinById(coinId);
+    const deniedCoin = await declineCoinById(coinId);
 
-    if (!coin) {
+    if (!deniedCoin) {
       res.status(HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
       return;
+    }
+
+    // Fetch user by coin.author (assuming coin.author is userId)
+    const user = await UserModel.findById(deniedCoin.author);
+
+    if (!user) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "User not found" });
+      return;
+    }
+
+    // Send the approval email to the user
+    const emailResult = await sendCoinDeniedMail(
+      user.email,
+      user.name,
+      deniedCoin.name
+    );
+
+    if (!emailResult.success) {
+      console.error("Failed to send approval email:", emailResult.error);
+      // Log the error but continue with the coin approval process
     }
 
     // Invalidate relevant caches
@@ -447,5 +500,145 @@ export const updateCoinPrices = async (
   } catch (error) {
     logger.error("Error in updateCoinPrices controller:", error);
     res.status(500).json({ message: "Failed to update coin prices" });
+  }
+};
+
+export const getAllUsersController = async (
+  req: UserQueryParams,
+  res: Response
+): Promise<void> => {
+  try {
+    const params = processUserQueryParams(req.query);
+    const searchValue = req.query.searchValue?.toString() || "";
+    // logger.info("Fetching fairlaunch coins with params:", {
+    //   pageSize: params.pageSize,
+    //   pageNumber: params.pageNumber,
+    // });
+
+    const usersCoinsData = await getUsers({
+      pageSize: params.pageSize,
+      pageNumber: params.pageNumber,
+      searchValue: searchValue,
+    });
+
+    if (!usersCoinsData || !usersCoinsData.users) {
+      // logger.warn("No fairlaunch coins found");
+      res.status(HTTPSTATUS.OK).json({
+        success: true,
+        message: "No fairlaunch coins found",
+        users: [],
+        totalCount: 0,
+        totalPages: 0,
+        skip: 0,
+      });
+      return;
+    }
+
+    // logger.info(
+    //   `Successfully retrieved ${fairlaunchCoinsData.coins.length} fairlaunch coins`
+    // );
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: "Users fetched successfully",
+      users: usersCoinsData.users,
+      totalCount: usersCoinsData.totalCount,
+      totalPages: usersCoinsData.totalPages,
+      skip: usersCoinsData.skip,
+    });
+  } catch (error) {
+    // logger.error("Error in getFairlaunchCoinsController:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to fetch users",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const updateUserRole = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    // Validate input
+    if (!userId) {
+      res
+        .status(HTTPSTATUS.BAD_REQUEST)
+        .json({ message: "User ID is required" });
+      return;
+    }
+
+    if (!role || !["user", "admin"].includes(role)) {
+      res.status(HTTPSTATUS.BAD_REQUEST).json({
+        message: "Valid role is required (user or admin)",
+      });
+      return;
+    }
+
+    // Update in both systems
+    const updatedUser = await updateUserRoleById(userId, role);
+
+    if (!updatedUser) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "User not found" });
+      return;
+    }
+
+    // Invalidate relevant caches
+    await invalidateCoinCaches(CacheInvalidationScope.UPDATE_ROLE);
+
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: "User role updated successfully in both systems",
+      user: updatedUser,
+    });
+  } catch (error) {
+    logger.error("Error in updateUserRole controller:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to update user role",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const deleteUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      res
+        .status(HTTPSTATUS.BAD_REQUEST)
+        .json({ message: "User ID is required" });
+      return;
+    }
+
+    const deletedUser = await deleteUserById(userId);
+
+    if (!deletedUser) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "User not found" });
+      return;
+    }
+
+    // Invalidate relevant caches
+    await invalidateCoinCaches(CacheInvalidationScope.DELETE_USER);
+
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: "User deleted successfully",
+      user: deletedUser,
+    });
+  } catch (error) {
+    logger.error("Error in deleteUser controller:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to delete user",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
   }
 };

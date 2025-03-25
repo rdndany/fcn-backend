@@ -70,6 +70,8 @@ export enum CacheInvalidationScope {
   FAVORITE = "favorite",
   VOTE = "vote",
   UPDATE_PRICE = "update-price",
+  UPDATE_ROLE = "update-role",
+  DELETE_USER = "delete-user",
 }
 
 export async function invalidateCoinCaches(
@@ -116,6 +118,16 @@ export async function invalidateCoinCaches(
           "userCoins",
           "coinsApproved"
         );
+        break;
+
+      case CacheInvalidationScope.UPDATE_ROLE:
+        // When updating a user's role
+        keysToInvalidate.push("users");
+        break;
+
+      case CacheInvalidationScope.DELETE_USER:
+        // When deleting a user
+        keysToInvalidate.push("users");
         break;
 
       case CacheInvalidationScope.UPDATE_PRICE:

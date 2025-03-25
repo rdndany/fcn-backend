@@ -3,51 +3,86 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getFavoritedCoinIds = exports.updateIsFavoritedFlag = void 0;
+exports.updateIsFavoritedFlag = updateIsFavoritedFlag;
+exports.getFavoritedCoinIds = getFavoritedCoinIds;
 const coin_model_1 = __importDefault(require("../models/coin.model"));
 const favorites_model_1 = __importDefault(require("../models/favorites.model"));
-const updateIsFavoritedFlag = async (coinIds, // Coin IDs to check for favorites
-userId // User ID to check if they favorited the coins
-) => {
+const log4js_1 = require("log4js");
+const logger = (0, log4js_1.getLogger)("favorites-service");
+async function updateIsFavoritedFlag(coinIds, userId) {
     try {
-        /** -------------------------------
-         * STEP 1: Get user's favorite coins
-         --------------------------------*/
-        const userFavorites = await favorites_model_1.default.find({
-            user_id: userId,
-            coin_id: { $in: coinIds }, // Only the coins the user might have favorited
+        logger.info("Attempting to update favorite flags:", {
+            coinCount: coinIds.length,
+            userId,
         });
-        /** -------------------------------
-         * STEP 2: Prepare bulk updates for isFavorited (true/false)
-         --------------------------------*/
-        const favoriteCoinIds = userFavorites.map((fav) => fav.coin_id.toString());
-        const isFavoritedBulkOps = coinIds.map((coinId) => ({
+        // Input validation
+        if (!coinIds.length || !userId) {
+            logger.warn("Invalid parameters for updating favorite flags:", {
+                hasCoinIds: Boolean(coinIds.length),
+                hasUserId: Boolean(userId),
+            });
+            return false;
+        }
+        // Find all favorites for the given user and coins in a single query
+        const favorites = await favorites_model_1.default.find({
+            user_id: userId,
+            coin_id: { $in: coinIds },
+        })
+            .select("coin_id")
+            .lean();
+        // Create a Set for O(1) lookup of favorited coin IDs
+        const favoritedCoinIds = new Set(favorites.map((f) => f.coin_id.toString()));
+        // Prepare bulk update operations
+        const bulkOps = coinIds.map((coinId) => ({
             updateOne: {
                 filter: { _id: coinId },
                 update: {
-                    $set: { isFavorited: favoriteCoinIds.includes(coinId.toString()) },
+                    $set: { isFavorited: favoritedCoinIds.has(coinId.toString()) },
                 },
             },
         }));
-        // Execute bulk update if needed
-        if (isFavoritedBulkOps.length > 0) {
-            const result = await coin_model_1.default.bulkWrite(isFavoritedBulkOps);
-        }
-        else {
-            console.log("No updates needed for isFavorited.");
-        }
+        // Execute bulk update in a single operation
+        const result = await coin_model_1.default.bulkWrite(bulkOps);
+        logger.info("Successfully updated favorite flags:", {
+            totalCoins: coinIds.length,
+            updatedCoins: result.modifiedCount,
+            favoritedCount: favoritedCoinIds.size,
+        });
+        return true;
     }
     catch (error) {
-        console.error("Error updating isFavorited flags:", error);
-        throw new Error("Failed to update isFavorited flags.");
+        logger.error("Error updating favorite flags:", {
+            error: error instanceof Error ? error.message : "Unknown error",
+            coinCount: coinIds.length,
+            userId,
+        });
+        return false;
     }
-};
-exports.updateIsFavoritedFlag = updateIsFavoritedFlag;
-const getFavoritedCoinIds = async (userId, coinIds) => {
-    const favorites = await favorites_model_1.default.find({
-        user_id: userId,
-        coin_id: { $in: coinIds },
-    }).select("coin_id");
-    return favorites.map((fav) => fav.coin_id.toString());
-};
-exports.getFavoritedCoinIds = getFavoritedCoinIds;
+}
+async function getFavoritedCoinIds(userId, coinIds) {
+    try {
+        logger.info("Fetching favorited coin IDs:", {
+            userId,
+            coinCount: coinIds.length,
+        });
+        const favorites = await favorites_model_1.default.find({
+            user_id: userId,
+            coin_id: { $in: coinIds },
+        })
+            .select("coin_id")
+            .lean();
+        const favoritedIds = favorites.map((fav) => fav.coin_id.toString());
+        logger.info("Successfully fetched favorited coin IDs:", {
+            userId,
+            foundCount: favoritedIds.length,
+        });
+        return favoritedIds;
+    }
+    catch (error) {
+        logger.error("Error fetching favorited coin IDs:", {
+            error: error instanceof Error ? error.message : "Unknown error",
+            userId,
+        });
+        return [];
+    }
+}

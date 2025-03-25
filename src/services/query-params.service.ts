@@ -1,4 +1,4 @@
-import { FilterParams } from "../types/coin.types";
+import { FilterParams, UserFilterParams } from "../types/coin.types";
 import { Request } from "express";
 
 export function processQueryParams(query: Request["query"]): FilterParams {
@@ -81,5 +81,26 @@ export function processQueryParams(query: Request["query"]): FilterParams {
     sortDirection: finalSortDirection as "ascending" | "descending",
     selectedKeys: finalSelectedKeys.map((key) => String(key)),
     userId: String(userId || ""),
+  };
+}
+
+export function processUserQueryParams(
+  query: Request["query"]
+): UserFilterParams {
+  // 1. Extract and set default values
+  const { pageSize = "25", pageNumber = "1" } = query;
+
+  // 2. Process pagination
+  let size = parseInt(pageSize as string, 10);
+  let page = parseInt(pageNumber as string, 10);
+
+  // Validate pagination values
+  size = !isNaN(size) && size > 0 ? size : 25;
+  page = !isNaN(page) && page > 0 ? page : 1;
+
+  // 8. Return processed parameters
+  return {
+    pageSize: size,
+    pageNumber: page,
   };
 }

@@ -7,13 +7,16 @@ import {
   GetFairlaunchCoinsFilteredType,
   GetPendingCoinsFilteredType,
   GetPresaleCoinsFilteredType,
+  GetUsersFilteredType,
   PendingCoinResult,
   PresaleCoinResult,
   PromotedCoinResult,
+  UsersResult,
 } from "../types/coin.types";
 import CoinModel, { CoinDocument, CoinStatus } from "../models/coin.model";
 import { getLogger } from "log4js";
 import { redisClient, setCache, getCache } from "../config/redis.config";
+import UserModel, { UserDocument } from "../models/user.model";
 
 const logger = getLogger("admin-service");
 
@@ -519,7 +522,7 @@ export const getCoinsFairlaunch = async ({
   }
 };
 
-export async function approveCoinById(coinId: string): Promise<boolean> {
+export async function approveCoinById(coinId: string): Promise<any> {
   try {
     // Update coin status to approved
     const approvedCoin = await CoinModel.findByIdAndUpdate(
@@ -533,14 +536,14 @@ export async function approveCoinById(coinId: string): Promise<boolean> {
 
     if (!approvedCoin) {
       logger.error(`Failed to approve coin ${coinId}: Coin not found`);
-      return false;
+      return null; // Returning null if the coin is not found
     }
 
     logger.info(`Successfully approved coin ${coinId}`);
-    return true;
+    return approvedCoin; // Return the approved coin with author details
   } catch (error) {
     logger.error("Error in approveCoinById:", error);
-    return false;
+    return null;
   }
 }
 
@@ -571,7 +574,7 @@ export async function promoteCoinById(
   }
 }
 
-export async function declineCoinById(coinId: string): Promise<boolean> {
+export async function declineCoinById(coinId: string): Promise<any> {
   try {
     const declinedCoin = await CoinModel.findByIdAndUpdate(
       coinId,
@@ -584,13 +587,140 @@ export async function declineCoinById(coinId: string): Promise<boolean> {
 
     if (!declinedCoin) {
       logger.warn(`Coin not found for declining with ID: ${coinId}`);
-      return false;
+      return null;
     }
 
     logger.info(`Successfully declined coin with ID: ${coinId}`);
-    return true;
+    return declinedCoin;
   } catch (error) {
     logger.error("Error in declineCoinById:", error);
-    throw new Error("Failed to decline coin");
+    return null;
   }
 }
+
+export const getUsers = async ({
+  pageSize,
+  pageNumber,
+  searchValue,
+}: GetUsersFilteredType): Promise<UsersResult> => {
+  try {
+    logger.info("Attempting to fetch fairlaunch coins");
+
+    // Build filter query with type safety
+    const filterQuery: FilterQuery<UserDocument> = {};
+
+    // Generate cache key
+    const cacheKey = `users:${JSON.stringify({
+      pageSize,
+      pageNumber,
+      searchValue,
+    })}`;
+
+    // Try cache first
+    const cachedData = await getCache<UsersResult>(redisClient, cacheKey);
+    if (cachedData) {
+      logger.info(`Cache hit for users query: ${cacheKey}`);
+      return cachedData;
+    }
+
+    if (searchValue) {
+      filterQuery.$or = [
+        { name: { $regex: searchValue, $options: "i" } },
+        { email: { $regex: searchValue, $options: "i" } },
+      ];
+    }
+    // Calculate pagination
+    const skip = (pageNumber - 1) * pageSize;
+    const totalCount = await UserModel.countDocuments(filterQuery);
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    // Execute query with optimized field selection
+    const users = await UserModel.find(filterQuery)
+      .select({
+        name: 1,
+        email: 1,
+        createdAt: 1,
+        role: 1,
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pageSize)
+      .lean();
+
+    const result: UsersResult = {
+      users,
+      totalCount,
+      totalPages,
+      skip,
+    };
+
+    // Cache results
+    await setCache(redisClient, cacheKey, result, "ex", 60 * 5); // 5 minutes cache
+    logger.info(`Cached users result: ${cacheKey}`);
+
+    if (!users || users.length === 0) {
+      logger.warn("No users found");
+    } else {
+      logger.info(`Found ${users.length} users`);
+    }
+
+    return result;
+  } catch (error) {
+    logger.error("Error in getUsers:", error);
+    throw new Error("Failed to fetch users");
+  }
+};
+
+import { clerkClient } from "@clerk/clerk-sdk-node";
+
+export const updateUserRoleById = async (
+  userId: string,
+  role: string
+): Promise<any> => {
+  try {
+    // Update in your database
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      userId,
+      { $set: { role } },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      logger.warn(`User not found for role update with ID: ${userId}`);
+      return null;
+    }
+
+    // Update in Clerk
+    await clerkClient.users.updateUser(updatedUser._id, {
+      publicMetadata: {
+        role: role,
+      },
+    });
+
+    logger.info(
+      `Successfully updated user role for ID: ${userId} in both DB and Clerk`
+    );
+    return updatedUser;
+  } catch (error) {
+    logger.error("Error in updateUserRoleById:", error);
+    throw new Error("Failed to update user role");
+  }
+};
+
+export const deleteUserById = async (userId: string): Promise<any> => {
+  try {
+    const deletedUser = await UserModel.findByIdAndDelete(userId);
+    if (!deletedUser) {
+      logger.warn(`User not found for deletion with ID: ${userId}`);
+      return null;
+    }
+
+    await clerkClient.users.deleteUser(userId);
+
+    logger.info(`Successfully deleted user with ID: ${userId}`);
+    return deletedUser;
+  } catch (error) {
+    logger.error("Error in deleteUserById:", error);
+    throw new Error("Failed to delete user");
+  }
+};

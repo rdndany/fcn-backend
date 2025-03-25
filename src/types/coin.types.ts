@@ -16,6 +16,11 @@ export interface FilterParams {
   userId: string;
 }
 
+export interface UserFilterParams {
+  pageSize: number;
+  pageNumber: number;
+}
+
 export interface CoinQuery {
   pageSize?: string;
   pageNumber?: string;
@@ -28,6 +33,8 @@ export interface CoinQuery {
   sortDirection?: string | string[];
   selectedKeys?: string | string[];
   userId?: string;
+  searchValue?: string;
+  [key: string]: string | string[] | undefined;
 }
 
 // Use Request with generic type parameter
@@ -152,6 +159,11 @@ export type GetPresaleCoinsFilteredType = {
 export type GetFairlaunchCoinsFilteredType = {
   pageSize: number;
   pageNumber: number;
+};
+export type GetUsersFilteredType = {
+  pageSize: number;
+  pageNumber: number;
+  searchValue?: string;
 };
 export type GetUserCoinsFilteredType = {
   pageSize: number;
@@ -298,6 +310,16 @@ export interface FairlaunchCoin {
   premium: boolean;
 }
 
+export interface User {
+  _id: Types.ObjectId | string;
+  name: string;
+  email: string;
+  image: string;
+  role: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface UserPendingCoin {
   _id: Types.ObjectId | string;
   name: string;
@@ -369,6 +391,12 @@ export interface FairlaunchCoinResult {
   skip: number; // Number of documents skipped for pagination
 }
 
+export interface UsersResult {
+  users: User[]; // Array of PendingCoin
+  totalCount: number; // Total number of coins matching the filter
+  totalPages: number; // Total number of pages
+  skip: number; // Number of documents skipped for pagination
+}
 export interface UserCoinResult {
   coins: UserPendingCoin[]; // Array of PendingCoin
   totalCount: number; // Total number of coins matching the filter
@@ -385,3 +413,13 @@ export interface UserDetailsSuccessResponse {
     role: string;
   };
 }
+
+export interface UserQuery {
+  pageSize?: string;
+  pageNumber?: string;
+  searchValue?: string;
+  [key: string]: string | string[] | undefined;
+}
+
+// Use Request with generic type parameter
+export type UserQueryParams = Request<{}, any, any, UserQuery>;

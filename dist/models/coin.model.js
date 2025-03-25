@@ -33,7 +33,14 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.CoinStatus = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
+var CoinStatus;
+(function (CoinStatus) {
+    CoinStatus["PENDING"] = "pending";
+    CoinStatus["APPROVED"] = "approved";
+    CoinStatus["DENIED"] = "denied";
+})(CoinStatus || (exports.CoinStatus = CoinStatus = {}));
 const coinSchema = new mongoose_1.Schema({
     name: { type: String, required: true, maxlength: 40 },
     symbol: { type: String, required: true, maxlength: 40 },
@@ -89,8 +96,8 @@ const coinSchema = new mongoose_1.Schema({
             },
             default: null, // Set default to null
         },
-        softcap: { type: Number, min: 0, default: null },
-        hardcap: { type: Number, min: 0, default: null },
+        softcap: { type: String, min: 0, default: null },
+        hardcap: { type: String, min: 0, default: null },
         coin: { type: String, required: true, default: "usdt" },
         timeStart: { type: Number, default: null },
         timeEnd: { type: Number, default: null },
@@ -129,12 +136,18 @@ const coinSchema = new mongoose_1.Schema({
     userVoted: { type: Boolean },
     todayVotes: { type: Number },
     price: { type: Number, default: 0 },
+    liquidity: { type: Number, default: 0 },
     mkap: { type: Number, default: 0 },
     price24h: {
         type: Number,
         default: 0,
     },
     premium: { type: Boolean, default: false },
+    status: {
+        type: String, // Use type: String for enums
+        enum: Object.values(CoinStatus), // Enforce enum values in the schema
+        default: CoinStatus.PENDING, // Default status if not specified
+    },
     promoted: { type: Boolean, default: false },
     isFavorited: { type: Boolean },
 }, { timestamps: true } // Automatically adds createdAt and updatedAt fields

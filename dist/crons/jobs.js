@@ -1,38 +1,70 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetAllVotes = exports.resetTodayVotes = exports.updateEVMCoinPricesInBatches = exports.updateSOLCoinPricesInBatches = void 0;
+exports.resetPriceMkapLiq = exports.deleteAllFavorites = exports.resetAllVotes = exports.resetTodayVotes = exports.updateEVMCoinPricesInBatches = exports.updateSOLCoinPricesInBatches = void 0;
 const log4js_1 = require("log4js");
-const coin_model_1 = __importDefault(require("../models/coin.model"));
+const coin_model_1 = __importStar(require("../models/coin.model"));
 const moralis_1 = __importDefault(require("moralis"));
 const getSafeNumber_1 = require("../utils/getSafeNumber");
+const favorites_model_1 = __importDefault(require("../models/favorites.model"));
 const logger = (0, log4js_1.getLogger)("moralis");
 const updateSOLCoinPricesInBatches = async () => {
     try {
-        // Fetch all coins that need their prices updated (e.g., presale and fairlaunch are false)
         const coinsToUpdate = await coin_model_1.default.find({
             chain: "sol",
             "presale.enabled": false,
             "fairlaunch.enabled": false,
-            price: { $exists: true }, // Only coins that have a price field
+            address: { $exists: true, $ne: "" },
+            status: coin_model_1.CoinStatus.APPROVED,
         });
         const BATCH_SIZE = 10;
         let currentIndex = 0;
-        let updatedCount = 0; // Counter for updated coins
-        // Function to process and update a batch of coins
+        let updatedCount = 0;
         const processBatch = async (batch) => {
             const tokenAddresses = batch
                 .map((coin) => coin.address)
-                .filter((address) => typeof address === "string"); // Collect all valid token addresses
+                .filter((address) => typeof address === "string");
             if (tokenAddresses.length === 0) {
                 logger.warn("No valid token addresses to process.");
                 return;
             }
             try {
-                // Fetch prices for all tokens in this batch using a single API request
-                const apiKey = process.env.MORALIS_API_KEY || ""; // Use your actual API key
+                const apiKey = process.env.MORALIS_API_KEY || "";
                 const options = {
                     method: "POST",
                     headers: {
@@ -44,77 +76,99 @@ const updateSOLCoinPricesInBatches = async () => {
                         addresses: tokenAddresses,
                     }),
                 };
+                // ✅ Fetch price data for multiple tokens
                 const response = await fetch("https://solana-gateway.moralis.io/token/mainnet/prices", options);
-                const pricesData = await response.json();
-                // Process metadata for each token
+                const pricesArray = await response.json();
+                // ✅ Create a price map by address (lowercase for consistency)
+                const priceDataMap = {};
+                pricesArray.forEach((priceData) => {
+                    if (priceData?.tokenAddress) {
+                        priceDataMap[priceData.tokenAddress.toLowerCase()] = priceData;
+                    }
+                });
+                // ✅ Fetch metadata for each token (separately, as you already do)
                 const metadataPromises = tokenAddresses.map(async (address) => {
-                    const metadataResponse = await fetch(`https://solana-gateway.moralis.io/token/mainnet/${address}/metadata`, {
+                    const metadataResponse = await fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=solana`, {
                         method: "GET",
                         headers: {
                             accept: "application/json",
-                            "X-API-Key": apiKey, // Use your actual API key
+                            "X-API-Key": apiKey,
                         },
                     });
                     const metadata = await metadataResponse.json();
-                    return metadata;
+                    return { address: address.toLowerCase(), metadata };
                 });
-                // Wait for all metadata fetches to complete
-                const metadataData = await Promise.all(metadataPromises);
-                // Update each coin with the fetched price and market cap
-                batch.forEach((coin, index) => {
-                    const priceData = pricesData[index];
-                    const metadata = metadataData[index];
-                    if (priceData) {
-                        const usdPrice = (0, getSafeNumber_1.getSafeNumber)(priceData?.usdPrice); // Default to 0 if price is not found
-                        const price24hChange = (0, getSafeNumber_1.getSafeNumber)(priceData?.usdPrice24hrPercentChange); // Default to 0 if 24hr price change is not found
-                        const fullyDilutedValue = (0, getSafeNumber_1.getSafeNumber)(metadata?.fullyDilutedValue); // Default to 0 if market cap is not found
-                        // Update the coin's price and market cap (fullyDilutedValue)
-                        coin.price = usdPrice;
-                        coin.price24h = price24hChange;
-                        coin.mkap = fullyDilutedValue;
-                        coin.save(); // Save the updated coin
-                        updatedCount++; // Increment the updated coins counter
-                        // console.log(`Updated price and market cap for coin: ${coin.name}`);
+                const metadataResults = await Promise.all(metadataPromises);
+                // ✅ Create a metadata map by address (lowercase)
+                const metadataMap = {};
+                metadataResults.forEach(({ address, metadata }) => {
+                    metadataMap[address] = metadata;
+                });
+                // ✅ Now iterate through the batch of coins and match by address
+                for (const coin of batch) {
+                    const tokenAddress = coin.address?.toLowerCase();
+                    if (!tokenAddress) {
+                        logger.error(`Coin ${coin.name} has an invalid address.`);
+                        continue;
+                    }
+                    const priceData = priceDataMap[tokenAddress];
+                    const metadata = metadataMap[tokenAddress];
+                    if (!priceData) {
+                        logger.error(`No price data found for coin: ${coin.name}`);
+                        continue;
+                    }
+                    // ✅ Update coin values
+                    coin.price = (0, getSafeNumber_1.getSafeNumber)(priceData.usdPrice);
+                    coin.price24h = (0, getSafeNumber_1.getSafeNumber)(priceData.usdPrice24hrPercentChange);
+                    if (metadata) {
+                        coin.mkap = (0, getSafeNumber_1.getSafeNumber)(metadata.totalFullyDilutedValuation);
+                        coin.liquidity = (0, getSafeNumber_1.getSafeNumber)(metadata.totalLiquidityUsd);
                     }
                     else {
-                        logger.error(`No price data found for coin: ${coin.name}`);
+                        logger.error(`No metadata found for coin: ${coin.name}`);
                     }
-                });
+                    try {
+                        await coin.save();
+                        updatedCount++;
+                    }
+                    catch (error) {
+                        logger.error(`Error saving coin ${coin.name}:`, error);
+                    }
+                }
             }
             catch (error) {
                 logger.error("Error fetching prices and metadata for batch:", error);
             }
         };
-        // Process the coins in batches
+        // ✅ Process coins in batches with delay
         const interval = setInterval(async () => {
             if (currentIndex < coinsToUpdate.length) {
-                // Slice the next batch of coins (BATCH_SIZE is the number of coins per batch)
                 const batch = coinsToUpdate.slice(currentIndex, currentIndex + BATCH_SIZE);
-                await processBatch(batch); // Process this batch
-                currentIndex += BATCH_SIZE; // Move to the next batch
+                logger.info(`Processing ${batch.length} coins for chain SOL`);
+                await processBatch(batch);
+                currentIndex += BATCH_SIZE;
             }
             else {
-                clearInterval(interval); // Stop the interval when all coins have been processed
+                clearInterval(interval);
                 logger.warn(`${updatedCount} coins for chain SOL have been updated.`);
             }
-        }, 10000); // 10 seconds delay between batches
+        }, 10000);
     }
     catch (error) {
-        logger.error("Error in updating coin prices:", error);
+        logger.error("Error in updating SOL coin prices:", error);
     }
 };
 exports.updateSOLCoinPricesInBatches = updateSOLCoinPricesInBatches;
 const updateEVMCoinPricesInBatches = async () => {
     try {
-        // Fetch all coins that need their prices updated
         const coinsToUpdate = await coin_model_1.default.find({
             chain: { $in: ["bnb", "eth", "matic", "base"] },
             "presale.enabled": false,
             "fairlaunch.enabled": false,
-            price: { $exists: true }, // Only coins that have a price field
+            address: { $exists: true, $ne: "" },
+            status: coin_model_1.CoinStatus.APPROVED,
         });
-        const BATCH_SIZE = 10; // Adjust this to the number of coins you want to update at once
-        // Mapping of chain names to chain IDs
+        const BATCH_SIZE = 10;
         const chainNameToIdMap = {
             bnb: "0x38",
             eth: "0x1",
@@ -122,46 +176,104 @@ const updateEVMCoinPricesInBatches = async () => {
             base: "0x2105",
         };
         const processBatch = async (batch, tokenChain) => {
-            // Move tokenAddresses **inside** this function to avoid shared state issues!
             const tokenAddresses = batch
                 .map((coin) => coin.address)
                 .filter((address) => typeof address === "string");
+            if (!tokenAddresses.length) {
+                logger.warn("No valid token addresses found in batch.");
+                return;
+            }
             try {
-                // Fetch prices for multiple tokens on the same chain
-                const response = await moralis_1.default.EvmApi.token.getMultipleTokenPrices({
-                    chain: tokenChain, // Specify the chain
+                const apiKey = process.env.MORALIS_API_KEY || "";
+                // ✅ Fetch prices for multiple tokens
+                const pricesResponse = await moralis_1.default.EvmApi.token.getMultipleTokenPrices({
+                    chain: tokenChain,
                     include: "percent_change",
                 }, {
                     tokens: tokenAddresses.map((address) => ({
                         tokenAddress: address,
                     })),
                 });
-                // Fetch metadata (e.g., market cap) for all tokens in the batch on this chain
-                const metadataResponse = await moralis_1.default.EvmApi.token.getTokenMetadata({
-                    chain: tokenChain,
-                    addresses: tokenAddresses,
+                if (!pricesResponse ||
+                    !pricesResponse.raw ||
+                    pricesResponse.raw.length === 0) {
+                    logger.warn(`No price data returned for chain ${tokenChain}. Skipping batch.`);
+                    return;
+                }
+                // ✅ Create a map from tokenAddress to priceData for easy lookup
+                const priceDataMap = {};
+                pricesResponse.raw.forEach((priceData) => {
+                    if (priceData && priceData.tokenAddress) {
+                        priceDataMap[priceData.tokenAddress.toLowerCase()] = priceData;
+                    }
                 });
-                // Process the response and update each coin's price and market cap
-                for (let i = 0; i < batch.length; i++) {
-                    const coin = batch[i];
-                    const priceData = response.raw[i];
-                    const tokenMetadata = metadataResponse.raw[i];
-                    // Update price data
-                    if (priceData) {
-                        coin.price = (0, getSafeNumber_1.getSafeNumber)(priceData.usdPrice);
-                        coin.price24h = (0, getSafeNumber_1.getSafeNumber)(priceData["24hrPercentChange"]);
+                // ✅ Fetch metadata for each token
+                const metadataPromises = batch.map(async (coin) => {
+                    const address = coin.address;
+                    if (!address) {
+                        logger.warn(`Coin ${coin.name} has no address, skipping metadata fetch.`);
+                        return { address: "", metadata: null };
                     }
-                    else {
+                    const chainId = chainNameToIdMap[coin.chain];
+                    try {
+                        const metadataResponse = await fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=${chainId}`, {
+                            method: "GET",
+                            headers: {
+                                accept: "application/json",
+                                "X-API-Key": apiKey,
+                            },
+                        });
+                        if (!metadataResponse.ok) {
+                            logger.error(`Failed to fetch metadata for ${coin.name}: ${metadataResponse.statusText}`);
+                            return { address, metadata: null };
+                        }
+                        const metadata = await metadataResponse.json();
+                        return { address, metadata };
+                    }
+                    catch (error) {
+                        logger.error(`Error fetching metadata for ${coin.name}:`, error);
+                        return { address, metadata: null };
+                    }
+                });
+                const metadataResults = await Promise.all(metadataPromises);
+                // ✅ Create a map from tokenAddress to metadata for easy lookup
+                const metadataMap = {};
+                metadataResults.forEach((result) => {
+                    if (result.address && result.metadata) {
+                        metadataMap[result.address.toLowerCase()] = result.metadata;
+                    }
+                });
+                // ✅ Now process each coin using the maps
+                for (const coin of batch) {
+                    const tokenAddress = coin.address?.toLowerCase();
+                    if (!tokenAddress) {
+                        logger.error(`Coin ${coin.name} has an invalid address.`);
+                        continue; // Skip this coin if it doesn't have a valid address
+                    }
+                    const priceData = priceDataMap[tokenAddress];
+                    const tokenMetadata = metadataMap[tokenAddress];
+                    if (!priceData) {
                         logger.error(`No price data found for coin: ${coin.name}`);
+                        continue;
                     }
-                    // Update market cap data
-                    if (tokenMetadata) {
-                        coin.mkap = (0, getSafeNumber_1.getSafeNumber)(tokenMetadata.market_cap);
+                    // ✅ Update price data
+                    coin.price = (0, getSafeNumber_1.getSafeNumber)(priceData.usdPrice);
+                    coin.price24h = (0, getSafeNumber_1.getSafeNumber)(priceData["24hrPercentChange"]);
+                    // ✅ Update market cap from metadata
+                    if (tokenMetadata &&
+                        tokenMetadata.totalFullyDilutedValuation !== undefined) {
+                        coin.mkap = (0, getSafeNumber_1.getSafeNumber)(tokenMetadata.totalFullyDilutedValuation);
                     }
                     else {
-                        logger.error(`No market cap data found for coin: ${coin.name}`);
+                        logger.error(`No market cap metadata for coin: ${coin.name}`);
                     }
-                    // Save the updated coin after both price and market cap updates
+                    // ✅ Update liquidity from metadata
+                    if (tokenMetadata && tokenMetadata.totalLiquidityUsd !== undefined) {
+                        coin.liquidity = (0, getSafeNumber_1.getSafeNumber)(tokenMetadata.totalLiquidityUsd);
+                    }
+                    else {
+                        logger.error(`No liquidity metadata for coin: ${coin.name}`);
+                    }
                     try {
                         await coin.save();
                     }
@@ -171,42 +283,42 @@ const updateEVMCoinPricesInBatches = async () => {
                 }
             }
             catch (error) {
-                logger.error(`Error fetching prices and market cap for batch on chain ${tokenChain}:`, error);
+                logger.error(`Error processing batch on chain ${tokenChain}:`, error);
             }
         };
-        // Group coins by their chain ID but preserve chain names
+        // ✅ Group coins by chain
         const coinsGroupedByChain = {};
-        // Group the coins based on their chain
         coinsToUpdate.forEach((coin) => {
             const chainName = coin.chain;
-            const chainId = chainNameToIdMap[chainName] || "0x1"; // Default to Ethereum ID if unknown
+            const chainId = chainNameToIdMap[chainName] || "0x1";
             if (!coinsGroupedByChain[chainId]) {
                 coinsGroupedByChain[chainId] = {
                     coins: [],
-                    chainName: chainName || "eth", // Default to eth if not specified
+                    chainName: chainName || "eth",
                 };
             }
             coinsGroupedByChain[chainId].coins.push(coin);
         });
-        // Process each chain batch
+        // ✅ Process each chain's coins in batches
         for (const tokenChainId in coinsGroupedByChain) {
             const { coins, chainName } = coinsGroupedByChain[tokenChainId];
-            let currentChainIndex = 0;
+            let currentIndex = 0;
             const interval = setInterval(async () => {
-                if (currentChainIndex < coins.length) {
-                    const batch = coins.slice(currentChainIndex, currentChainIndex + BATCH_SIZE);
-                    await processBatch(batch, tokenChainId); // Pass the chain ID to Moralis
-                    currentChainIndex += BATCH_SIZE;
+                if (currentIndex < coins.length) {
+                    const batch = coins.slice(currentIndex, currentIndex + BATCH_SIZE);
+                    logger.info(`Processing ${batch.length} coins for chain ${chainName}`);
+                    await processBatch(batch, tokenChainId);
+                    currentIndex += BATCH_SIZE;
                 }
                 else {
                     clearInterval(interval);
                     logger.warn(`${coins.length} coins for chain ${chainName.toUpperCase()} have been updated.`);
                 }
-            }, 10000); // 10 seconds delay between batches
+            }, 10000); // 10 seconds between batches
         }
     }
     catch (error) {
-        logger.error("Error in updating coin prices and market caps:", error);
+        logger.error("Error updating EVM coin prices in batches:", error);
     }
 };
 exports.updateEVMCoinPricesInBatches = updateEVMCoinPricesInBatches;
@@ -230,3 +342,30 @@ const resetAllVotes = async () => {
     }
 };
 exports.resetAllVotes = resetAllVotes;
+const deleteAllFavorites = async () => {
+    try {
+        // Reset all todayVotes to 0 at midnight UTC
+        await favorites_model_1.default.deleteMany({});
+    }
+    catch (error) {
+        console.error("Error deleting all favorites:", error);
+    }
+};
+exports.deleteAllFavorites = deleteAllFavorites;
+const resetPriceMkapLiq = async () => {
+    try {
+        // Reset all todayVotes to 0 at midnight UTC
+        await coin_model_1.default.updateMany({}, {
+            $set: {
+                price: 0,
+                mkap: 0,
+                price24h: 0,
+                liquidity: 0,
+            },
+        });
+    }
+    catch (error) {
+        console.error("Error resetting token price mkap and liquidity:", error);
+    }
+};
+exports.resetPriceMkapLiq = resetPriceMkapLiq;

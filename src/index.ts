@@ -4,7 +4,6 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import session from "cookie-session";
-import http from "http";
 import { getLogger } from "log4js";
 import helmet from "helmet";
 import { clerkMiddleware } from "@clerk/express";
@@ -21,57 +20,33 @@ import { startCronJobs } from "./crons/cronJobs";
 import favoritesRoutes from "./routes/favorites.route";
 import userRoutes from "./routes/user.route";
 import adminRoutes from "./routes/admin.route";
+import { setupResend } from "./config/resend.config";
 
 const BASE_PATH = config.BASE_PATH;
 
 const logger = getLogger("server");
 const app = express();
-//app.set("trust proxy", 1);
-//const server = new http.Server(app);
+app.set("trust proxy", 1);
 
 app.use(helmet());
+app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json({ limit: "5mb" })); // Set the maximum payload size to 5 MB
 app.use(express.urlencoded({ limit: "5mb", extended: true }));
-
-// app.use(
-//   session({
-//     name: "session",
-//     keys: [config.SESSION_SECRET],
-//     maxAge: 24 * 60 * 60 * 1000,
-//     secure: config.NODE_ENV === "production",
-//     httpOnly: true,
-//     sameSite: "lax",
-//   })
-// );
-
-// const allowedOrigins = process.env.FRONTEND_ORIGIN
-//   ? process.env.FRONTEND_ORIGIN.split(",")
-//   : [];
-
-app.use(cors());
+app.use(
+  session({
+    name: "session",
+    keys: [config.SESSION_SECRET],
+    maxAge: 24 * 60 * 60 * 1000,
+    secure: config.NODE_ENV === "production",
+    httpOnly: true,
+    sameSite: "lax",
+  })
+);
 
 // MIDDLEWARES
 app.use(clerkMiddleware());
-app.use(express.json());
 app.use(LogMiddleware);
-// app.use(cors());
-// app.use(
-//   cors({
-//     origin: (origin, callback) => {
-//       // Ensure 'origin' is defined and check if it's in the allowedOrigins list
-//       if (
-//         (typeof origin === "string" && allowedOrigins.includes(origin)) ||
-//         !origin
-//       ) {
-//         callback(null, true); // Allow the request
-//       } else {
-//         callback(new Error("Not allowed by CORS")); // Reject the request
-//       }
-//     },
-//     credentials: true, // Enable credentials (cookies, headers, etc.)
-//   })
-// );
 
 // ROUTES
 app.post("/webhooks/clerk", clerkWebhooks);
@@ -84,16 +59,16 @@ app.use(`${BASE_PATH}/admin`, adminRoutes);
 // FOR ERRORS
 app.use(errorHandler);
 
-// CRONS
-// nodeCron.schedule("*/1 * * * *", async () => {
-//   console.log("Running both vote counters every 1 minute...");
-//   await updateTotalVotesCount();
-//   await updateTodayVotesCount();
-// });
-
 app.listen(config.PORT, async () => {
   logger.info(`🚀 Server running on port ${config.PORT} in ${config.NODE_ENV}`);
   await connectDatabase();
+
+  // Initialize Resend email service
+  if (!setupResend()) {
+    logger.error("Failed to initialize Resend email service. Exiting...");
+    process.exit(1);
+  }
+
   // Start cron jobs after the database connection is established
   startCronJobs(); // Initialize Redis connection
 });

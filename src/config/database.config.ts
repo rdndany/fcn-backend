@@ -10,7 +10,7 @@ const connectDatabase = async () => {
     await mongoose.connect(config.MONGO_URI);
     logger.info("✅ Database connected!");
     await Moralis.start({
-      apiKey: process.env.MORALIS_API_KEY,
+      apiKey: config.MORALIS_API_KEY,
     });
     loggerMoralis.info("🧡 Moralis connected!");
   } catch (error) {

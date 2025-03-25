@@ -23,8 +23,8 @@ const seedVotes = async () => {
         if (coins.length === 0) {
             throw new Error("No coins found to seed votes");
         }
-        const totalVotes = 2000000; // Total number of votes to seed
-        const batchSize = 500; // Number of votes to insert in each batch
+        const totalVotes = 0; // Total number of votes to seed
+        const batchSize = 0; // Number of votes to insert in each batch
         // Loop to generate and insert votes in batches
         for (let i = 0; i < totalVotes; i += batchSize) {
             const votes = Array.from({ length: batchSize }).map(() => {

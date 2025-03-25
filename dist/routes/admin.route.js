@@ -1,0 +1,18 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const adminAuth_middleware_1 = require("../middlewares/adminAuth.middleware");
+const admin_controller_1 = require("../controllers/admin.controller");
+const user_controller_1 = require("../controllers/user.controller");
+const adminRoutes = (0, express_1.Router)();
+adminRoutes.get("/pending", adminAuth_middleware_1.checkAdminAuth, admin_controller_1.getPendingCoinsController);
+adminRoutes.get("/approved", adminAuth_middleware_1.checkAdminAuth, admin_controller_1.getApprovedCoinsController);
+adminRoutes.get("/promoted", adminAuth_middleware_1.checkAdminAuth, admin_controller_1.getAdminPromotedCoinsController);
+adminRoutes.get("/presale", adminAuth_middleware_1.checkAdminAuth, admin_controller_1.getPresaleCoinsController);
+adminRoutes.get("/fairlaunch", adminAuth_middleware_1.checkAdminAuth, admin_controller_1.getFairlaunchCoinsController);
+adminRoutes.post("/promote/:coinId", adminAuth_middleware_1.checkAdminAuth, admin_controller_1.promoteCoin);
+adminRoutes.post("/approve/:coinId", adminAuth_middleware_1.checkAdminAuth, admin_controller_1.approveCoin);
+adminRoutes.post("/decline/:coinId", adminAuth_middleware_1.checkAdminAuth, admin_controller_1.declineCoin);
+adminRoutes.patch("/:coinId/price", adminAuth_middleware_1.checkAdminAuth, admin_controller_1.updateCoinPrices);
+adminRoutes.get("/:coinId", adminAuth_middleware_1.checkAdminAuth, user_controller_1.getUserByCoinId);
+exports.default = adminRoutes;

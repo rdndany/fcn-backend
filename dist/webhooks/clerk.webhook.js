@@ -27,15 +27,18 @@ const clerkWebhooks = async (req, res) => {
         });
         // Getting data from request body
         const { data, type } = req.body;
-        let userData; // Allow missing fields
+        // Define the type of userData as Partial<UserDocument> to allow missing fields
+        let userData;
         // Switch Cases for different Events
         switch (type) {
             case "user.created":
+                // Add publicMetadata with role "user"
                 userData = {
                     _id: data.id,
                     email: data.email_addresses[0].email_address,
                     name: data.first_name,
                     image: data.image_url,
+                    role: "user", // Assign role "user"
                     createdAt: new Date(),
                     updatedAt: new Date(),
                 };

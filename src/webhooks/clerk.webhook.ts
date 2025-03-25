@@ -2,8 +2,13 @@ import { Webhook } from "svix";
 import { Request, Response, RequestHandler } from "express";
 import { config } from "../config/app.config";
 import UserModel, { UserDocument } from "../models/user.model";
+import { Clerk } from "@clerk/clerk-sdk-node";
 
-// API Controller function to manage Clerk user with database
+// Initialize Clerk with proper typing
+const clerkClient = Clerk({
+  secretKey: config.CLERK_SECRET_KEY,
+});
+
 export const clerkWebhooks: RequestHandler = async (
   req: Request,
   res: Response
@@ -37,17 +42,32 @@ export const clerkWebhooks: RequestHandler = async (
     // Switch Cases for different Events
     switch (type) {
       case "user.created":
-        // Add publicMetadata with role "user"
+        // (1) Save user to your DB
         userData = {
           _id: data.id,
           email: data.email_addresses[0].email_address,
           name: data.first_name,
           image: data.image_url,
-          role: "user", // Assign role "user"
+          role: "user",
           createdAt: new Date(),
           updatedAt: new Date(),
         };
         await UserModel.create(userData);
+
+        // (2) DEBUG: Log the user ID and metadata before update
+        console.log(`Updating Clerk metadata for user: ${data.id}`);
+
+        // (3) Update Clerk's publicMetadata
+        try {
+          await clerkClient.users.updateUser(data.id, {
+            publicMetadata: { role: "user" },
+          });
+          console.log("Clerk metadata updated successfully");
+        } catch (err) {
+          console.error("Failed to update Clerk metadata:", err);
+          // Still respond with 200 to avoid retries
+        }
+
         res.status(200).json({ success: true });
         return;
 

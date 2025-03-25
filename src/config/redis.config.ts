@@ -2,14 +2,15 @@
 
 import Redis from "ioredis";
 import { getLogger } from "log4js";
+import { config } from "./app.config";
 
 const logger = getLogger("cache");
 
 export const redisConfig = {
-  host: process.env.REDIS_HOST || "127.0.0.1",
-  port: Number(process.env.REDIS_PORT) || 6379,
-  password: process.env.REDIS_PASSWORD || undefined,
-  db: Number(process.env.REDIS_DB) || 0,
+  host: config.REDIS_HOST || "127.0.0.1",
+  port: Number(config.REDIS_PORT) || 6379,
+  password: config.REDIS_PASSWORD || undefined,
+  db: Number(config.REDIS_DB) || 0,
   connectTimeout: 10000, // 10 seconds timeout
   retryStrategy: (times: number) => Math.min(times * 50, 2000), // Retry on connection failure
 };

@@ -35,7 +35,7 @@ export const startCronJobs = () => {
 
   cron.schedule("0 0 * * *", async () => {
     try {
-      await resetAllVotes();
+      await resetTodayVotes();
       logger.info("Today votes reseted: ", new Date().toISOString());
     } catch (error) {
       logger.error("Error occurred while reseting the today votes:", error);

@@ -11,7 +11,7 @@ const logger = (0, log4js_1.getLogger)("cron-jobs");
 // Schedule the cron job to run every minute (for demonstration, you can adjust this as needed)
 const startCronJobs = () => {
     // Cron job to run updateSOLCoinPricesInBatches every minute (you can adjust the timing as needed)
-    node_cron_1.default.schedule("*/60 * * * *", async () => {
+    node_cron_1.default.schedule("0 0 * * *", async () => {
         try {
             await (0, jobs_1.updateSOLCoinPricesInBatches)();
             logger.info("SOL prices update started at: ", new Date().toISOString());
@@ -21,7 +21,7 @@ const startCronJobs = () => {
         }
     });
     // Cron job to run updateEVMCoinPricesInBatches every minute (you can adjust the timing as needed)
-    node_cron_1.default.schedule("*/60 * * * *", async () => {
+    node_cron_1.default.schedule("0 0 * * *", async () => {
         try {
             await (0, jobs_1.updateEVMCoinPricesInBatches)();
             logger.info("EVM prices update started at: ", new Date().toISOString());
@@ -32,12 +32,20 @@ const startCronJobs = () => {
     });
     node_cron_1.default.schedule("0 0 * * *", async () => {
         try {
-            await (0, jobs_1.resetTodayVotes)();
+            await (0, jobs_1.resetAllVotes)();
             logger.info("Today votes reseted: ", new Date().toISOString());
         }
         catch (error) {
             logger.error("Error occurred while reseting the today votes:", error);
         }
     });
+    // cron.schedule("* * * * *", async () => {
+    //   try {
+    //     await resetPriceMkapLiq();
+    //     logger.info("Today votes reseted: ", new Date().toISOString());
+    //   } catch (error) {
+    //     logger.error("Error occurred while reseting the today votes:", error);
+    //   }
+    // });
 };
 exports.startCronJobs = startCronJobs;
