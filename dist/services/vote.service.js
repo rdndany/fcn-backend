@@ -32,6 +32,15 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -45,16 +54,16 @@ const log4js_1 = require("log4js");
 const favorites_service_1 = require("./favorites.service");
 const coin_utils_1 = require("../utils/coin.utils");
 const logger = (0, log4js_1.getLogger)("votes");
-const getVotesByCoinId = async (coin_id) => {
+const getVotesByCoinId = (coin_id) => __awaiter(void 0, void 0, void 0, function* () {
     if (!mongoose_1.default.Types.ObjectId.isValid(coin_id)) {
         throw new Error("Invalid coin_id format");
     }
     // Find all votes where coin_id matches
-    const votes = await vote_model_1.default.countDocuments({ coin_id: coin_id });
+    const votes = yield vote_model_1.default.countDocuments({ coin_id: coin_id });
     return votes;
-};
+});
 exports.getVotesByCoinId = getVotesByCoinId;
-const createVoteByCoinId = async (coin_id, userIp) => {
+const createVoteByCoinId = (coin_id, userIp) => __awaiter(void 0, void 0, void 0, function* () {
     if (!coin_id || !userIp) {
         throw new Error("coin_id and ip_address are required");
     }
@@ -66,7 +75,7 @@ const createVoteByCoinId = async (coin_id, userIp) => {
     logger.info("Processing vote request:", { coin_id, userIp });
     try {
         // First, check if the coin exists and is approved
-        const coin = await coin_model_1.default.findById(coin_id);
+        const coin = yield coin_model_1.default.findById(coin_id);
         if (!coin) {
             throw new Error("Coin not found");
         }
@@ -75,7 +84,7 @@ const createVoteByCoinId = async (coin_id, userIp) => {
             throw new Error(`Cannot vote for ${coin.name} as it is not approved.`);
         }
         // Check if the user has already voted today for this coin
-        const existingVote = await vote_model_1.default.findOne({
+        const existingVote = yield vote_model_1.default.findOne({
             coin_id,
             ip_address: userIp,
             created_at: { $gte: todayStart },
@@ -84,14 +93,14 @@ const createVoteByCoinId = async (coin_id, userIp) => {
             throw new Error(`You have already voted today for ${coin.name}.`);
         }
         // Create the vote record first
-        const vote = await vote_model_1.default.create({
+        const vote = yield vote_model_1.default.create({
             coin_id,
             ip_address: userIp,
             organic: true,
             created_at: new Date(),
         });
         // Then update the coin's vote counts
-        const updatedCoin = await coin_model_1.default.findOneAndUpdate({ _id: coin_id }, {
+        const updatedCoin = yield coin_model_1.default.findOneAndUpdate({ _id: coin_id }, {
             $inc: {
                 votes: 1,
                 todayVotes: 1,
@@ -99,11 +108,11 @@ const createVoteByCoinId = async (coin_id, userIp) => {
         }, { new: true });
         if (!updatedCoin) {
             // If coin update fails, we should clean up the vote record
-            await vote_model_1.default.deleteOne({ _id: vote._id });
+            yield vote_model_1.default.deleteOne({ _id: vote._id });
             throw new Error("Failed to update the coin vote count");
         }
         // Invalidate caches
-        await (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.VOTE);
+        yield (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.VOTE);
         logger.info("Successfully recorded vote:", {
             coin_id,
             coinName: coin.name,
@@ -119,32 +128,30 @@ const createVoteByCoinId = async (coin_id, userIp) => {
         logger.error("Error in createVoteByCoinId:", error);
         throw error;
     }
-};
+});
 exports.createVoteByCoinId = createVoteByCoinId;
-async function fetchVotesToCoins({ coins, favoritedCoinIds, ipAddress, coinIds, userId, }) {
-    // Step 1: Calculate start of today (UTC)
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
-    if (userId) {
-        favoritedCoinIds = await (0, favorites_service_1.getFavoritedCoinIds)(userId, coinIds);
-    }
-    // Step 2: Get all user votes for today
-    const userVotes = await vote_model_1.default.find({
-        ip_address: ipAddress,
-        coin_id: { $in: coinIds },
-        created_at: { $gte: todayStart },
-    }).select("coin_id");
-    // Step 3: Convert votes into a Set for quick lookup
-    const userVotedCoins = new Set(userVotes.map((vote) => vote.coin_id.toString()));
-    // Step 4: Map promoted coins and add the flags
-    const coinsWithUpdatedFlags = coins.map((coinDoc) => {
-        const coin = coinDoc; // Assert coinDoc as a Coin type
-        const coinId = coin._id.toString();
-        return {
-            ...coin,
-            isFavorited: favoritedCoinIds.includes(coinId),
-            userVoted: userVotedCoins.has(coinId),
-        };
+function fetchVotesToCoins(_a) {
+    return __awaiter(this, arguments, void 0, function* ({ coins, favoritedCoinIds, ipAddress, coinIds, userId, }) {
+        // Step 1: Calculate start of today (UTC)
+        const todayStart = new Date();
+        todayStart.setUTCHours(0, 0, 0, 0);
+        if (userId) {
+            favoritedCoinIds = yield (0, favorites_service_1.getFavoritedCoinIds)(userId, coinIds);
+        }
+        // Step 2: Get all user votes for today
+        const userVotes = yield vote_model_1.default.find({
+            ip_address: ipAddress,
+            coin_id: { $in: coinIds },
+            created_at: { $gte: todayStart },
+        }).select("coin_id");
+        // Step 3: Convert votes into a Set for quick lookup
+        const userVotedCoins = new Set(userVotes.map((vote) => vote.coin_id.toString()));
+        // Step 4: Map promoted coins and add the flags
+        const coinsWithUpdatedFlags = coins.map((coinDoc) => {
+            const coin = coinDoc; // Assert coinDoc as a Coin type
+            const coinId = coin._id.toString();
+            return Object.assign(Object.assign({}, coin), { isFavorited: favoritedCoinIds.includes(coinId), userVoted: userVotedCoins.has(coinId) });
+        });
+        return coinsWithUpdatedFlags;
     });
-    return coinsWithUpdatedFlags;
 }

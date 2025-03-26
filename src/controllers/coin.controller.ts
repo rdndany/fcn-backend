@@ -5,10 +5,13 @@ import {
   deleteCoinById,
   getCoinsFiltered,
   getCoinsPromoted,
+  getPresaleCoins,
+  getRecentlyAddedCoins,
+  getTopGainersCoins,
 } from "../services/coin.service";
 import { HTTPSTATUS } from "../config/http.config";
 import { fetchVotesToCoins } from "../services/vote.service";
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { getAuth } from "@clerk/express";
 import CoinModel, { CoinStatus } from "../models/coin.model";
 import cloudinary from "../config/cloudinary.config";
@@ -24,6 +27,7 @@ import {
 } from "../utils/coin.utils";
 import { getClientIp } from "request-ip";
 import UserModel from "../models/user.model";
+import { getViewStats, trackView } from "../services/coinView.service";
 
 export const getAllCoinsController = async (
   req: CoinQueryParams,
@@ -42,14 +46,6 @@ export const getAllCoinsController = async (
       });
       return;
     }
-    // Log incoming filter parameters
-    // logger.info("Incoming filter parameters:", {
-    //   presale: params.isPresale,
-    //   fairlaunch: params.isFairlaunch,
-    //   chains: params.chains,
-    //   audit: params.isAudit,
-    //   kyc: params.isKyc,
-    // });
 
     // Fetch filtered coins with explicit boolean flags
     const filteredCoins = await getCoinsFiltered({
@@ -95,14 +91,6 @@ export const getAllCoinsController = async (
       coinsWithUpdatedFlags,
       ...filteredCoins,
     });
-
-    // logger.info(
-    //   `Successfully retrieved ${coinsWithUpdatedFlags.length} coins with filters:`,
-    //   {
-    //     presale: params.isPresale,
-    //     fairlaunch: params.isFairlaunch,
-    //   }
-    // );
 
     res.status(HTTPSTATUS.OK).json(response);
   } catch (error) {
@@ -183,6 +171,69 @@ export const getPromotedCoinsController = async (
       success: false,
       message: "Failed to fetch promoted coins",
       error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const getTopGainersCoinsController = async (
+  req: CoinQueryParams,
+  res: Response
+): Promise<void> => {
+  try {
+    const topGainers = await getTopGainersCoins();
+
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: "Top gainers coins fetched successfully",
+      topGainersCoins: topGainers,
+    });
+  } catch (error) {
+    console.error("Error in getTopGainersCoinsController:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to fetch top gainers coins",
+    });
+  }
+};
+
+export const getRecentlyAddedCoinsController = async (
+  req: CoinQueryParams,
+  res: Response
+): Promise<void> => {
+  try {
+    const recentlyAdded = await getRecentlyAddedCoins();
+
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: "Recently added coins fetched successfully",
+      recentlyAddedCoins: recentlyAdded,
+    });
+  } catch (error) {
+    console.error("Error in getRecentlyAddedCoinsController:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to fetch recently added coins",
+    });
+  }
+};
+
+export const getPresaleCoinsController = async (
+  req: CoinQueryParams,
+  res: Response
+): Promise<void> => {
+  try {
+    const presaleCoins = await getPresaleCoins();
+
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: "Presale coins fetched successfully",
+      presaleCoins: presaleCoins,
+    });
+  } catch (error) {
+    console.error("Error in getPresaleCoinsController:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to fetch presale coins",
     });
   }
 };
@@ -488,9 +539,32 @@ export const getCoinBySlug = async (
       return;
     }
 
-    res.status(HTTPSTATUS.OK).json(coinDetails);
+    // Track view
+    const ipAddress = getClientIp(req);
+    const userAgent = req.headers["user-agent"];
+
+    if (!ipAddress) {
+      res
+        .status(HTTPSTATUS.BAD_REQUEST)
+        .json({ message: "IP address not found" });
+      return;
+    }
+    // Convert coinDetails._id to ObjectId
+    const coinId = new mongoose.Types.ObjectId(coinDetails._id);
+    await trackView(coinId, ipAddress as string, userAgent);
+
+    let stats;
+    try {
+      stats = await getViewStats(coinDetails._id);
+      console.log(stats);
+    } catch (error) {
+      console.error("Failed to fetch view stats:", error);
+      stats = { total_views: 0, last_24h: 0 };
+    }
+
+    res.status(HTTPSTATUS.OK).json({ ...coinDetails, stats });
   } catch (error) {
-    // logger.error("Error in getCoinBySlug controller:", error);
+    console.error("Error in getCoinBySlug:", error);
     res
       .status(HTTPSTATUS.INTERNAL_SERVER_ERROR)
       .json({ message: "Failed to retrieve coin details" });

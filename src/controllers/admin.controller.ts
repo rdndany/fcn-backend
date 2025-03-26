@@ -15,7 +15,7 @@ import { getLogger } from "log4js";
 import {
   approveCoinById,
   declineCoinById,
-  deleteUserById,
+  deleteUserFromClerkOnly,
   getCoinsAdminPromoted,
   getCoinsApproved,
   getCoinsFairlaunch,
@@ -617,11 +617,13 @@ export const deleteUser = async (
         .json({ message: "User ID is required" });
       return;
     }
+    // Only delete from Clerk
+    const deletionSuccess = await deleteUserFromClerkOnly(userId);
 
-    const deletedUser = await deleteUserById(userId);
-
-    if (!deletedUser) {
-      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "User not found" });
+    if (!deletionSuccess) {
+      res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+        message: "Failed to delete user from Clerk",
+      });
       return;
     }
 
@@ -631,7 +633,6 @@ export const deleteUser = async (
     res.status(HTTPSTATUS.OK).json({
       success: true,
       message: "User deleted successfully",
-      user: deletedUser,
     });
   } catch (error) {
     logger.error("Error in deleteUser controller:", error);
@@ -639,6 +640,76 @@ export const deleteUser = async (
       success: false,
       message: "Failed to delete user",
       error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const promoteCoinToTrendingRank = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { coinId, rank } = req.params;
+
+    // Ensure both coinId and rank are provided
+    if (!coinId || !rank) {
+      res
+        .status(HTTPSTATUS.BAD_REQUEST)
+        .json({ message: "Coin ID and rank are required" });
+      return;
+    }
+
+    // Ensure the rank is valid (between 1 and 10)
+    const rankNum = parseInt(rank, 10);
+    if (isNaN(rankNum) || rankNum < 1 || rankNum > 10) {
+      res
+        .status(HTTPSTATUS.BAD_REQUEST)
+        .json({ message: "Rank must be between 1 and 10" });
+      return;
+    }
+
+    // Fetch the coin by coinId
+    const coin = await CoinModel.findById(coinId);
+    if (!coin) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
+      return;
+    }
+
+    // Set the rank and expiration (24 hours from now)
+    const expirationTime = new Date();
+    expirationTime.setHours(expirationTime.getHours() + 24); // Add 24 hours
+
+    const updatedCoin = await CoinModel.findByIdAndUpdate(
+      coinId,
+      {
+        $set: {
+          paidTrendingRank: rankNum,
+          paidTrendingExpiry: expirationTime,
+        },
+      },
+      { new: true } // Return the updated coin
+    );
+
+    if (!updatedCoin) {
+      res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+        message: "Failed to update coin's rank",
+      });
+      return;
+    }
+
+    // Invalidate the cache for trending
+    await invalidateCoinCaches(CacheInvalidationScope.PROMOTION);
+
+    // Send success response
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      message: `Coin has been promoted to rank ${rankNum} for 24 hours`,
+    });
+  } catch (error) {
+    console.error("Error promoting coin to rank:", error);
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to promote coin to specified rank",
     });
   }
 };

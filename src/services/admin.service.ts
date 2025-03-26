@@ -636,12 +636,6 @@ export const getUsers = async ({
 
     // Execute query with optimized field selection
     const users = await UserModel.find(filterQuery)
-      .select({
-        name: 1,
-        email: 1,
-        createdAt: 1,
-        role: 1,
-      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize)
@@ -707,20 +701,16 @@ export const updateUserRoleById = async (
   }
 };
 
-export const deleteUserById = async (userId: string): Promise<any> => {
+export const deleteUserFromClerkOnly = async (
+  userId: string
+): Promise<boolean> => {
   try {
-    const deletedUser = await UserModel.findByIdAndDelete(userId);
-    if (!deletedUser) {
-      logger.warn(`User not found for deletion with ID: ${userId}`);
-      return null;
-    }
-
+    // Only delete from Clerk, not from database
     await clerkClient.users.deleteUser(userId);
-
-    logger.info(`Successfully deleted user with ID: ${userId}`);
-    return deletedUser;
+    logger.info(`Successfully deleted user from Clerk with ID: ${userId}`);
+    return true;
   } catch (error) {
-    logger.error("Error in deleteUserById:", error);
-    throw new Error("Failed to delete user");
+    logger.error("Error deleting user from Clerk:", error);
+    throw new Error("Failed to delete user from Clerk");
   }
 };

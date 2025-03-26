@@ -8,7 +8,10 @@ import {
   deleteCoin,
   getAllCoinsController,
   getCoinBySlug,
+  getPresaleCoinsController,
   getPromotedCoinsController,
+  getRecentlyAddedCoinsController,
+  getTopGainersCoinsController,
   update,
   uploadImage,
 } from "../controllers/coin.controller";
@@ -20,6 +23,12 @@ const coinRoutes = Router();
 coinRoutes.get("/all", getAllCoinsController);
 
 coinRoutes.get("/promoted", getPromotedCoinsController);
+
+coinRoutes.get("/top-gainers", getTopGainersCoinsController);
+
+coinRoutes.get("/recently-added", getRecentlyAddedCoinsController);
+
+coinRoutes.get("/presale", getPresaleCoinsController);
 
 coinRoutes.get("/:slug", getCoinBySlug);
 

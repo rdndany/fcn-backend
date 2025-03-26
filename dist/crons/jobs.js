@@ -32,6 +32,15 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -43,9 +52,9 @@ const moralis_1 = __importDefault(require("moralis"));
 const getSafeNumber_1 = require("../utils/getSafeNumber");
 const favorites_model_1 = __importDefault(require("../models/favorites.model"));
 const logger = (0, log4js_1.getLogger)("moralis");
-const updateSOLCoinPricesInBatches = async () => {
+const updateSOLCoinPricesInBatches = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const coinsToUpdate = await coin_model_1.default.find({
+        const coinsToUpdate = yield coin_model_1.default.find({
             chain: "sol",
             "presale.enabled": false,
             "fairlaunch.enabled": false,
@@ -55,7 +64,8 @@ const updateSOLCoinPricesInBatches = async () => {
         const BATCH_SIZE = 10;
         let currentIndex = 0;
         let updatedCount = 0;
-        const processBatch = async (batch) => {
+        const processBatch = (batch) => __awaiter(void 0, void 0, void 0, function* () {
+            var _a;
             const tokenAddresses = batch
                 .map((coin) => coin.address)
                 .filter((address) => typeof address === "string");
@@ -77,28 +87,28 @@ const updateSOLCoinPricesInBatches = async () => {
                     }),
                 };
                 // ✅ Fetch price data for multiple tokens
-                const response = await fetch("https://solana-gateway.moralis.io/token/mainnet/prices", options);
-                const pricesArray = await response.json();
+                const response = yield fetch("https://solana-gateway.moralis.io/token/mainnet/prices", options);
+                const pricesArray = yield response.json();
                 // ✅ Create a price map by address (lowercase for consistency)
                 const priceDataMap = {};
                 pricesArray.forEach((priceData) => {
-                    if (priceData?.tokenAddress) {
+                    if (priceData === null || priceData === void 0 ? void 0 : priceData.tokenAddress) {
                         priceDataMap[priceData.tokenAddress.toLowerCase()] = priceData;
                     }
                 });
                 // ✅ Fetch metadata for each token (separately, as you already do)
-                const metadataPromises = tokenAddresses.map(async (address) => {
-                    const metadataResponse = await fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=solana`, {
+                const metadataPromises = tokenAddresses.map((address) => __awaiter(void 0, void 0, void 0, function* () {
+                    const metadataResponse = yield fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=solana`, {
                         method: "GET",
                         headers: {
                             accept: "application/json",
                             "X-API-Key": apiKey,
                         },
                     });
-                    const metadata = await metadataResponse.json();
+                    const metadata = yield metadataResponse.json();
                     return { address: address.toLowerCase(), metadata };
-                });
-                const metadataResults = await Promise.all(metadataPromises);
+                }));
+                const metadataResults = yield Promise.all(metadataPromises);
                 // ✅ Create a metadata map by address (lowercase)
                 const metadataMap = {};
                 metadataResults.forEach(({ address, metadata }) => {
@@ -106,7 +116,7 @@ const updateSOLCoinPricesInBatches = async () => {
                 });
                 // ✅ Now iterate through the batch of coins and match by address
                 for (const coin of batch) {
-                    const tokenAddress = coin.address?.toLowerCase();
+                    const tokenAddress = (_a = coin.address) === null || _a === void 0 ? void 0 : _a.toLowerCase();
                     if (!tokenAddress) {
                         logger.error(`Coin ${coin.name} has an invalid address.`);
                         continue;
@@ -128,7 +138,7 @@ const updateSOLCoinPricesInBatches = async () => {
                         logger.error(`No metadata found for coin: ${coin.name}`);
                     }
                     try {
-                        await coin.save();
+                        yield coin.save();
                         updatedCount++;
                     }
                     catch (error) {
@@ -139,29 +149,29 @@ const updateSOLCoinPricesInBatches = async () => {
             catch (error) {
                 logger.error("Error fetching prices and metadata for batch:", error);
             }
-        };
+        });
         // ✅ Process coins in batches with delay
-        const interval = setInterval(async () => {
+        const interval = setInterval(() => __awaiter(void 0, void 0, void 0, function* () {
             if (currentIndex < coinsToUpdate.length) {
                 const batch = coinsToUpdate.slice(currentIndex, currentIndex + BATCH_SIZE);
                 logger.info(`Processing ${batch.length} coins for chain SOL`);
-                await processBatch(batch);
+                yield processBatch(batch);
                 currentIndex += BATCH_SIZE;
             }
             else {
                 clearInterval(interval);
                 logger.warn(`${updatedCount} coins for chain SOL have been updated.`);
             }
-        }, 10000);
+        }), 10000);
     }
     catch (error) {
         logger.error("Error in updating SOL coin prices:", error);
     }
-};
+});
 exports.updateSOLCoinPricesInBatches = updateSOLCoinPricesInBatches;
-const updateEVMCoinPricesInBatches = async () => {
+const updateEVMCoinPricesInBatches = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const coinsToUpdate = await coin_model_1.default.find({
+        const coinsToUpdate = yield coin_model_1.default.find({
             chain: { $in: ["bnb", "eth", "matic", "base"] },
             "presale.enabled": false,
             "fairlaunch.enabled": false,
@@ -175,7 +185,8 @@ const updateEVMCoinPricesInBatches = async () => {
             matic: "0x89",
             base: "0x2105",
         };
-        const processBatch = async (batch, tokenChain) => {
+        const processBatch = (batch, tokenChain) => __awaiter(void 0, void 0, void 0, function* () {
+            var _a;
             const tokenAddresses = batch
                 .map((coin) => coin.address)
                 .filter((address) => typeof address === "string");
@@ -186,7 +197,7 @@ const updateEVMCoinPricesInBatches = async () => {
             try {
                 const apiKey = process.env.MORALIS_API_KEY || "";
                 // ✅ Fetch prices for multiple tokens
-                const pricesResponse = await moralis_1.default.EvmApi.token.getMultipleTokenPrices({
+                const pricesResponse = yield moralis_1.default.EvmApi.token.getMultipleTokenPrices({
                     chain: tokenChain,
                     include: "percent_change",
                 }, {
@@ -208,7 +219,7 @@ const updateEVMCoinPricesInBatches = async () => {
                     }
                 });
                 // ✅ Fetch metadata for each token
-                const metadataPromises = batch.map(async (coin) => {
+                const metadataPromises = batch.map((coin) => __awaiter(void 0, void 0, void 0, function* () {
                     const address = coin.address;
                     if (!address) {
                         logger.warn(`Coin ${coin.name} has no address, skipping metadata fetch.`);
@@ -216,7 +227,7 @@ const updateEVMCoinPricesInBatches = async () => {
                     }
                     const chainId = chainNameToIdMap[coin.chain];
                     try {
-                        const metadataResponse = await fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=${chainId}`, {
+                        const metadataResponse = yield fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=${chainId}`, {
                             method: "GET",
                             headers: {
                                 accept: "application/json",
@@ -227,15 +238,15 @@ const updateEVMCoinPricesInBatches = async () => {
                             logger.error(`Failed to fetch metadata for ${coin.name}: ${metadataResponse.statusText}`);
                             return { address, metadata: null };
                         }
-                        const metadata = await metadataResponse.json();
+                        const metadata = yield metadataResponse.json();
                         return { address, metadata };
                     }
                     catch (error) {
                         logger.error(`Error fetching metadata for ${coin.name}:`, error);
                         return { address, metadata: null };
                     }
-                });
-                const metadataResults = await Promise.all(metadataPromises);
+                }));
+                const metadataResults = yield Promise.all(metadataPromises);
                 // ✅ Create a map from tokenAddress to metadata for easy lookup
                 const metadataMap = {};
                 metadataResults.forEach((result) => {
@@ -245,7 +256,7 @@ const updateEVMCoinPricesInBatches = async () => {
                 });
                 // ✅ Now process each coin using the maps
                 for (const coin of batch) {
-                    const tokenAddress = coin.address?.toLowerCase();
+                    const tokenAddress = (_a = coin.address) === null || _a === void 0 ? void 0 : _a.toLowerCase();
                     if (!tokenAddress) {
                         logger.error(`Coin ${coin.name} has an invalid address.`);
                         continue; // Skip this coin if it doesn't have a valid address
@@ -275,7 +286,7 @@ const updateEVMCoinPricesInBatches = async () => {
                         logger.error(`No liquidity metadata for coin: ${coin.name}`);
                     }
                     try {
-                        await coin.save();
+                        yield coin.save();
                     }
                     catch (error) {
                         logger.error(`Error saving coin ${coin.name}:`, error);
@@ -285,7 +296,7 @@ const updateEVMCoinPricesInBatches = async () => {
             catch (error) {
                 logger.error(`Error processing batch on chain ${tokenChain}:`, error);
             }
-        };
+        });
         // ✅ Group coins by chain
         const coinsGroupedByChain = {};
         coinsToUpdate.forEach((coin) => {
@@ -303,59 +314,59 @@ const updateEVMCoinPricesInBatches = async () => {
         for (const tokenChainId in coinsGroupedByChain) {
             const { coins, chainName } = coinsGroupedByChain[tokenChainId];
             let currentIndex = 0;
-            const interval = setInterval(async () => {
+            const interval = setInterval(() => __awaiter(void 0, void 0, void 0, function* () {
                 if (currentIndex < coins.length) {
                     const batch = coins.slice(currentIndex, currentIndex + BATCH_SIZE);
                     logger.info(`Processing ${batch.length} coins for chain ${chainName}`);
-                    await processBatch(batch, tokenChainId);
+                    yield processBatch(batch, tokenChainId);
                     currentIndex += BATCH_SIZE;
                 }
                 else {
                     clearInterval(interval);
                     logger.warn(`${coins.length} coins for chain ${chainName.toUpperCase()} have been updated.`);
                 }
-            }, 10000); // 10 seconds between batches
+            }), 10000); // 10 seconds between batches
         }
     }
     catch (error) {
         logger.error("Error updating EVM coin prices in batches:", error);
     }
-};
+});
 exports.updateEVMCoinPricesInBatches = updateEVMCoinPricesInBatches;
-const resetTodayVotes = async () => {
+const resetTodayVotes = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
         // Reset all todayVotes to 0 at midnight UTC
-        await coin_model_1.default.updateMany({}, { $set: { todayVotes: 0 } });
+        yield coin_model_1.default.updateMany({}, { $set: { todayVotes: 0 } });
     }
     catch (error) {
         console.error("Error resetting today votes:", error);
     }
-};
+});
 exports.resetTodayVotes = resetTodayVotes;
-const resetAllVotes = async () => {
+const resetAllVotes = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
         // Reset all todayVotes to 0 at midnight UTC
-        await coin_model_1.default.updateMany({}, { $set: { votes: 0 } });
+        yield coin_model_1.default.updateMany({}, { $set: { votes: 0 } });
     }
     catch (error) {
         console.error("Error resetting all votes:", error);
     }
-};
+});
 exports.resetAllVotes = resetAllVotes;
-const deleteAllFavorites = async () => {
+const deleteAllFavorites = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
         // Reset all todayVotes to 0 at midnight UTC
-        await favorites_model_1.default.deleteMany({});
+        yield favorites_model_1.default.deleteMany({});
     }
     catch (error) {
         console.error("Error deleting all favorites:", error);
     }
-};
+});
 exports.deleteAllFavorites = deleteAllFavorites;
-const resetPriceMkapLiq = async () => {
+const resetPriceMkapLiq = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
         // Reset all todayVotes to 0 at midnight UTC
-        await coin_model_1.default.updateMany({}, {
+        yield coin_model_1.default.updateMany({}, {
             $set: {
                 price: 0,
                 mkap: 0,
@@ -367,5 +378,5 @@ const resetPriceMkapLiq = async () => {
     catch (error) {
         console.error("Error resetting token price mkap and liquidity:", error);
     }
-};
+});
 exports.resetPriceMkapLiq = resetPriceMkapLiq;

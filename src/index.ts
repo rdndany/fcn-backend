@@ -21,6 +21,7 @@ import favoritesRoutes from "./routes/favorites.route";
 import userRoutes from "./routes/user.route";
 import adminRoutes from "./routes/admin.route";
 import { setupResend } from "./config/resend.config";
+import coinViewRoutes from "./routes/coinView.route";
 
 const BASE_PATH = config.BASE_PATH;
 
@@ -49,12 +50,14 @@ app.use(clerkMiddleware());
 app.use(LogMiddleware);
 
 // ROUTES
-app.post("/webhooks/clerk", clerkWebhooks);
+
+app.post("/api/webhooks", clerkWebhooks);
 app.use(`${BASE_PATH}/coin`, coinRoutes);
 app.use(`${BASE_PATH}/user`, userRoutes);
 app.use(`${BASE_PATH}/vote`, voteRoutes);
 app.use(`${BASE_PATH}/favorites`, favoritesRoutes);
 app.use(`${BASE_PATH}/admin`, adminRoutes);
+app.use(`${BASE_PATH}/coin-view`, coinViewRoutes);
 
 // FOR ERRORS
 app.use(errorHandler);

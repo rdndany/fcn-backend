@@ -1,4 +1,13 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -11,7 +20,7 @@ const user_model_1 = __importDefault(require("../models/user.model"));
 const log4js_1 = require("log4js");
 const query_params_service_1 = require("../services/query-params.service");
 const logger = (0, log4js_1.getLogger)("user-controller");
-const getUserCoinsController = async (req, res) => {
+const getUserCoinsController = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const params = (0, query_params_service_1.processQueryParams)(req.query);
         const userId = (0, express_1.getAuth)(req).userId;
@@ -28,7 +37,7 @@ const getUserCoinsController = async (req, res) => {
             });
             return;
         }
-        const user = await user_model_1.default.findById(userId);
+        const user = yield user_model_1.default.findById(userId);
         if (!user) {
             // logger.warn(`User not found with ID: ${userId}`);
             res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({
@@ -37,7 +46,7 @@ const getUserCoinsController = async (req, res) => {
             });
             return;
         }
-        const userCoinsData = await (0, user_service_1.getUserCoinsPending)({
+        const userCoinsData = yield (0, user_service_1.getUserCoinsPending)({
             pageSize: params.pageSize,
             pageNumber: params.pageNumber,
             userId,
@@ -74,9 +83,9 @@ const getUserCoinsController = async (req, res) => {
             error: error instanceof Error ? error.message : "Unknown error",
         });
     }
-};
+});
 exports.getUserCoinsController = getUserCoinsController;
-const getUserByCoinId = async (req, res) => {
+const getUserByCoinId = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { coinId } = req.params;
         // logger.info("Attempting to fetch user by coin ID:", { coinId });
@@ -88,7 +97,7 @@ const getUserByCoinId = async (req, res) => {
             });
             return;
         }
-        const userDetails = await (0, user_service_1.userCoinById)(coinId);
+        const userDetails = yield (0, user_service_1.userCoinById)(coinId);
         if (!userDetails) {
             // logger.warn("No user found for coin ID:", { coinId });
             res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({
@@ -118,5 +127,5 @@ const getUserByCoinId = async (req, res) => {
             error: error instanceof Error ? error.message : "Unknown error",
         });
     }
-};
+});
 exports.getUserByCoinId = getUserByCoinId;

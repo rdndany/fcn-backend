@@ -1,4 +1,13 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -10,16 +19,16 @@ const coin_model_1 = __importDefault(require("./models/coin.model"));
 const vote_model_1 = __importDefault(require("./models/vote.model"));
 // Load environment variables from .env file
 dotenv_1.default.config();
-const seedVotes = async () => {
+const seedVotes = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
         // Connect to MongoDB using URI from environment variable
-        await mongoose_1.default.connect(process.env.MONGO_URI);
+        yield mongoose_1.default.connect(process.env.MONGO_URI);
         console.log("✅ Connected to MongoDB");
         // Clear existing data from the Vote model
-        await vote_model_1.default.deleteMany({});
+        yield vote_model_1.default.deleteMany({});
         console.log("🗑️ Existing votes deleted");
         // Fetch all coins from the Coin collection to get random coin_ids
-        const coins = await coin_model_1.default.find({});
+        const coins = yield coin_model_1.default.find({});
         if (coins.length === 0) {
             throw new Error("No coins found to seed votes");
         }
@@ -48,17 +57,17 @@ const seedVotes = async () => {
                 return vote;
             });
             // Insert the votes in batches
-            await vote_model_1.default.insertMany(votes);
+            yield vote_model_1.default.insertMany(votes);
             console.log(`🚀 Batch ${Math.floor(i / batchSize) + 1} of votes seeded successfully!`);
         }
         // Disconnect from MongoDB
-        await mongoose_1.default.disconnect();
+        yield mongoose_1.default.disconnect();
         console.log("🔌 Database connection closed");
     }
     catch (error) {
         console.error("❌ Error seeding votes:", error);
         process.exit(1); // Exit the process if there's an error
     }
-};
+});
 // Execute the seeding
 seedVotes();

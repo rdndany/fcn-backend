@@ -32,11 +32,20 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getEVMCoinPriceData = exports.getSOLCoinPriceData = exports.getCoinsPromoted = exports.getCoinsFiltered = void 0;
+exports.getEVMCoinPriceData = exports.getSOLCoinPriceData = exports.getPresaleCoins = exports.getRecentlyAddedCoins = exports.getTopGainersCoins = exports.getCoinsPromoted = exports.getCoinsFiltered = void 0;
 exports.deleteCoinById = deleteCoinById;
 exports.coinBySlug = coinBySlug;
 const coin_model_1 = __importStar(require("../models/coin.model"));
@@ -48,7 +57,7 @@ const vote_model_1 = __importDefault(require("../models/vote.model"));
 const removeImageCloudinary_1 = require("../utils/removeImageCloudinary");
 const favorites_model_1 = __importDefault(require("../models/favorites.model"));
 const logger = (0, log4js_1.getLogger)("coins-service");
-const getCoinsFiltered = async ({ pageSize, pageNumber, presale, fairlaunch, chains, audit, kyc, sortColumn, sortDirection, }) => {
+const getCoinsFiltered = (_a) => __awaiter(void 0, [_a], void 0, function* ({ pageSize, pageNumber, presale, fairlaunch, chains, audit, kyc, sortColumn, sortDirection, }) {
     try {
         // Build filter query with type safety
         const filterQuery = {
@@ -97,14 +106,14 @@ const getCoinsFiltered = async ({ pageSize, pageNumber, presale, fairlaunch, cha
             sortDirection,
         })}`;
         // Try cache first
-        const cachedData = await (0, redis_config_1.getCache)(redis_config_1.redisClient, cacheKey);
+        const cachedData = yield (0, redis_config_1.getCache)(redis_config_1.redisClient, cacheKey);
         if (cachedData) {
             logger.info(`Cache hit for filtered coins query: ${cacheKey}`);
             return cachedData;
         }
         // Calculate pagination
         const skip = (pageNumber - 1) * pageSize;
-        const totalCount = await coin_model_1.default.countDocuments(filterQuery);
+        const totalCount = yield coin_model_1.default.countDocuments(filterQuery);
         const totalPages = Math.ceil(totalCount / pageSize);
         // Define sort criteria with type safety
         const sortCriteria = {
@@ -112,7 +121,7 @@ const getCoinsFiltered = async ({ pageSize, pageNumber, presale, fairlaunch, cha
             _id: 1, // Secondary sort for consistent pagination
         };
         // Execute query with optimized field selection
-        const coins = await coin_model_1.default.find(filterQuery)
+        const coins = yield coin_model_1.default.find(filterQuery)
             .select({
             logo: 1,
             name: 1,
@@ -148,7 +157,7 @@ const getCoinsFiltered = async ({ pageSize, pageNumber, presale, fairlaunch, cha
             skip,
         };
         // Cache results
-        await (0, redis_config_1.setCache)(redis_config_1.redisClient, cacheKey, result, "ex", 60 * 10); // 10 minutes cache
+        yield (0, redis_config_1.setCache)(redis_config_1.redisClient, cacheKey, result, "ex", 60 * 10); // 10 minutes cache
         logger.info(`Cached filtered coins result: ${cacheKey}`);
         return result;
     }
@@ -156,14 +165,14 @@ const getCoinsFiltered = async ({ pageSize, pageNumber, presale, fairlaunch, cha
         logger.error("Error in getCoinsFiltered:", error);
         throw new Error("Failed to fetch filtered coins");
     }
-};
+});
 exports.getCoinsFiltered = getCoinsFiltered;
-const getCoinsPromoted = async () => {
+const getCoinsPromoted = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const cacheKey = "coinsPromoted";
         logger.info("Attempting to fetch promoted coins");
         // Try cache first
-        const cacheData = await (0, redis_config_1.getCache)(redis_config_1.redisClient, cacheKey);
+        const cacheData = yield (0, redis_config_1.getCache)(redis_config_1.redisClient, cacheKey);
         if (cacheData) {
             logger.info(`Cache hit for promoted coins, found ${cacheData.length} coins`);
             return cacheData;
@@ -174,7 +183,7 @@ const getCoinsPromoted = async () => {
             status: coin_model_1.CoinStatus.APPROVED,
         };
         // Execute query with optimized field selection
-        const promotedCoins = await coin_model_1.default.find(filterQuery)
+        const promotedCoins = yield coin_model_1.default.find(filterQuery)
             .select({
             logo: 1,
             name: 1,
@@ -196,6 +205,7 @@ const getCoinsPromoted = async () => {
             isFavorited: 1,
             address: 1,
             status: 1,
+            totalViews: 1,
         })
             .sort({ votes: -1, _id: 1 }) // Consistent sorting with secondary key
             .lean();
@@ -204,7 +214,7 @@ const getCoinsPromoted = async () => {
             return [];
         }
         // Cache the results
-        await (0, redis_config_1.setCache)(redis_config_1.redisClient, cacheKey, promotedCoins, "ex", 60 * 10); // 10 minutes cache
+        yield (0, redis_config_1.setCache)(redis_config_1.redisClient, cacheKey, promotedCoins, "ex", 60 * 10); // 10 minutes cache
         logger.info(`Cached ${promotedCoins.length} promoted coins`);
         return promotedCoins;
     }
@@ -212,12 +222,110 @@ const getCoinsPromoted = async () => {
         logger.error("Error in getCoinsPromoted:", error);
         throw new Error("Failed to fetch promoted coins");
     }
-};
+});
 exports.getCoinsPromoted = getCoinsPromoted;
-const getSOLCoinPriceData = async (address) => {
+const getTopGainersCoins = () => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const cacheKey = "top-gainers-coins";
+        const cacheData = yield (0, redis_config_1.getCache)(redis_config_1.redisClient, cacheKey);
+        if (cacheData) {
+            logger.info(`Cache hit for top gainers coins, found ${cacheData.length} coins`);
+            return cacheData;
+        }
+        const topGainers = yield coin_model_1.default.find({
+            price24h: { $gt: 0 },
+            status: coin_model_1.CoinStatus.APPROVED,
+        })
+            .select({
+            logo: 1,
+            name: 1,
+            chain: 1,
+            slug: 1,
+            price24h: 1,
+        })
+            .sort({ price24h: -1 })
+            .limit(9)
+            .lean();
+        yield (0, redis_config_1.setCache)(redis_config_1.redisClient, cacheKey, topGainers, "ex", 60 * 10); // 10 minutes cache
+        logger.info(`Cached ${topGainers.length} top gainers coins`);
+        return topGainers;
+    }
+    catch (error) {
+        logger.error("Error in getTopGainersCoins:", error);
+        throw new Error("Failed to fetch top gainers coins");
+    }
+});
+exports.getTopGainersCoins = getTopGainersCoins;
+const getRecentlyAddedCoins = () => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const cacheKey = "recently-added-coins";
+        const cacheData = yield (0, redis_config_1.getCache)(redis_config_1.redisClient, cacheKey);
+        if (cacheData) {
+            logger.info(`Cache hit for recently added coins, found ${cacheData.length} coins`);
+            return cacheData;
+        }
+        const recentlyAdded = yield coin_model_1.default.find({
+            createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+            status: coin_model_1.CoinStatus.APPROVED,
+        })
+            .select({
+            logo: 1,
+            name: 1,
+            chain: 1,
+            slug: 1,
+            createdAt: 1,
+        })
+            .sort({ createdAt: -1 })
+            .limit(9)
+            .lean();
+        yield (0, redis_config_1.setCache)(redis_config_1.redisClient, cacheKey, recentlyAdded, "ex", 60 * 10); // 10 minutes cache
+        logger.info(`Cached ${recentlyAdded.length} recently added coins`);
+        return recentlyAdded;
+    }
+    catch (error) {
+        logger.error("Error in getRecentlyAdded:", error);
+        throw new Error("Failed to fetch recently added coins");
+    }
+});
+exports.getRecentlyAddedCoins = getRecentlyAddedCoins;
+const getPresaleCoins = () => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const cacheKey = "presale-coins";
+        const cacheData = yield (0, redis_config_1.getCache)(redis_config_1.redisClient, cacheKey);
+        if (cacheData) {
+            logger.info(`Cache hit for presale coins, found ${cacheData.length} coins`);
+            return cacheData;
+        }
+        const presaleCoins = yield coin_model_1.default.find({
+            "presale.enabled": true,
+            status: coin_model_1.CoinStatus.APPROVED,
+        })
+            .select({
+            logo: 1,
+            name: 1,
+            symbol: 1,
+            chain: 1,
+            slug: 1,
+            presale: 1,
+            createdAt: 1,
+        })
+            .sort({ createdAt: -1 })
+            .limit(9)
+            .lean();
+        yield (0, redis_config_1.setCache)(redis_config_1.redisClient, cacheKey, presaleCoins, "ex", 60 * 10); // 10 minutes cache
+        logger.info(`Cached ${presaleCoins.length} presale coins`);
+        return presaleCoins;
+    }
+    catch (error) {
+        logger.error("Error in getPresaleCoins:", error);
+        throw new Error("Failed to fetch presale coins");
+    }
+});
+exports.getPresaleCoins = getPresaleCoins;
+const getSOLCoinPriceData = (address) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const apiKey = process.env.MORALIS_API_KEY || "";
-        const pricesRes = await fetch("https://solana-gateway.moralis.io/token/mainnet/prices", {
+        const pricesRes = yield fetch("https://solana-gateway.moralis.io/token/mainnet/prices", {
             method: "POST",
             headers: {
                 accept: "application/json",
@@ -228,31 +336,31 @@ const getSOLCoinPriceData = async (address) => {
                 addresses: [address],
             }),
         });
-        const pricesData = await pricesRes.json();
+        const pricesData = yield pricesRes.json();
         const priceData = pricesData[0];
-        const metadataRes = await fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=solana`, {
+        const metadataRes = yield fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=solana`, {
             method: "GET",
             headers: {
                 accept: "application/json",
                 "X-API-Key": apiKey,
             },
         });
-        const metadata = await metadataRes.json();
+        const metadata = yield metadataRes.json();
         logger.warn(`Price, Price24h, Mkap and Liquidity updated for ${address}`);
         return {
-            price: (0, getSafeNumber_1.getSafeNumber)(priceData?.usdPrice),
-            price24h: (0, getSafeNumber_1.getSafeNumber)(priceData?.usdPrice24hrPercentChange),
-            mkap: (0, getSafeNumber_1.getSafeNumber)(metadata?.totalFullyDilutedValuation),
-            liquidity: (0, getSafeNumber_1.getSafeNumber)(metadata?.totalLiquidityUsd),
+            price: (0, getSafeNumber_1.getSafeNumber)(priceData === null || priceData === void 0 ? void 0 : priceData.usdPrice),
+            price24h: (0, getSafeNumber_1.getSafeNumber)(priceData === null || priceData === void 0 ? void 0 : priceData.usdPrice24hrPercentChange),
+            mkap: (0, getSafeNumber_1.getSafeNumber)(metadata === null || metadata === void 0 ? void 0 : metadata.totalFullyDilutedValuation),
+            liquidity: (0, getSafeNumber_1.getSafeNumber)(metadata === null || metadata === void 0 ? void 0 : metadata.totalLiquidityUsd),
         };
     }
     catch (error) {
         logger.error(`Error fetching SOL coin data for address ${address}:`, error);
         return { price: 0, price24h: 0, mkap: 0, liquidity: 0 };
     }
-};
+});
 exports.getSOLCoinPriceData = getSOLCoinPriceData;
-const getEVMCoinPriceData = async (address, chain) => {
+const getEVMCoinPriceData = (address, chain) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const apiKey = process.env.MORALIS_API_KEY || "";
         const chainNameToIdMap = {
@@ -266,7 +374,7 @@ const getEVMCoinPriceData = async (address, chain) => {
             logger.error(`Unsupported EVM chain: ${chain}`);
             return { price: 0, price24h: 0, mkap: 0, liquidity: 0 };
         }
-        const response = await moralis_1.default.EvmApi.token.getMultipleTokenPrices({
+        const response = yield moralis_1.default.EvmApi.token.getMultipleTokenPrices({
             chain: chainId,
             include: "percent_change",
         }, {
@@ -274,99 +382,99 @@ const getEVMCoinPriceData = async (address, chain) => {
         });
         const priceData = response.raw[0];
         console.log(chainId, chain, address);
-        const metadataRes = await fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=${chainId}`, {
+        const metadataRes = yield fetch(`https://deep-index.moralis.io/api/v2.2/tokens/${address}/analytics?chain=${chainId}`, {
             method: "GET",
             headers: {
                 accept: "application/json",
                 "X-API-Key": apiKey,
             },
         });
-        const metadata = await metadataRes.json();
+        const metadata = yield metadataRes.json();
         logger.warn(`Price, Price24h, Mkap and Liquidity updated for ${address}`);
         return {
-            price: (0, getSafeNumber_1.getSafeNumber)(priceData?.usdPrice),
-            price24h: (0, getSafeNumber_1.getSafeNumber)(priceData?.["24hrPercentChange"]),
-            mkap: Number(metadata?.totalFullyDilutedValuation) || 0,
-            liquidity: Number(metadata?.totalLiquidityUsd) || 0,
+            price: (0, getSafeNumber_1.getSafeNumber)(priceData === null || priceData === void 0 ? void 0 : priceData.usdPrice),
+            price24h: (0, getSafeNumber_1.getSafeNumber)(priceData === null || priceData === void 0 ? void 0 : priceData["24hrPercentChange"]),
+            mkap: Number(metadata === null || metadata === void 0 ? void 0 : metadata.totalFullyDilutedValuation) || 0,
+            liquidity: Number(metadata === null || metadata === void 0 ? void 0 : metadata.totalLiquidityUsd) || 0,
         };
     }
     catch (error) {
         logger.error(`Error fetching EVM coin data for address ${address} on chain ${chain}:`, error);
         return { price: 0, price24h: 0, mkap: 0, liquidity: 0 };
     }
-};
+});
 exports.getEVMCoinPriceData = getEVMCoinPriceData;
-async function deleteCoinById(coinId) {
-    try {
-        // Find the coin first
-        const coin = await coin_model_1.default.findById(coinId);
-        if (!coin) {
-            return false;
-        }
-        // Delete associated votes
+function deleteCoinById(coinId) {
+    return __awaiter(this, void 0, void 0, function* () {
         try {
-            await vote_model_1.default.deleteMany({ coin_id: coin._id });
-            logger.info(`Deleted votes for coin ${coin._id}`);
-        }
-        catch (error) {
-            logger.error("Error deleting votes for coin:", error);
-            throw new Error("Failed to delete votes for coin");
-        }
-        // Delete from FavoritesModel
-        try {
-            await favorites_model_1.default.deleteMany({ coin_id: coin._id });
-            logger.info(`Deleted from favorites for coin ${coin._id}`);
-        }
-        catch (error) {
-            logger.error("Error deleting from FavoritesModel:", error);
-            throw new Error("Failed to delete coin from favorites");
-        }
-        // Delete the cropped logo from Cloudinary if exists
-        if (coin.croppedLogo) {
-            const publicId = (0, removeImageCloudinary_1.getPublicIdFromUrl)(coin.croppedLogo);
-            if (publicId) {
-                try {
-                    await (0, removeImageCloudinary_1.removeImageFromCloudinary)(publicId);
-                    logger.info(`Deleted image from Cloudinary for coin ${coin._id}`);
-                }
-                catch (error) {
-                    logger.error("Failed to delete image from Cloudinary:", error);
-                    throw new Error("Failed to delete image from Cloudinary");
+            // Find the coin first
+            const coin = yield coin_model_1.default.findById(coinId);
+            if (!coin) {
+                return false;
+            }
+            // Delete associated votes
+            try {
+                yield vote_model_1.default.deleteMany({ coin_id: coin._id });
+                logger.info(`Deleted votes for coin ${coin._id}`);
+            }
+            catch (error) {
+                logger.error("Error deleting votes for coin:", error);
+                throw new Error("Failed to delete votes for coin");
+            }
+            // Delete from FavoritesModel
+            try {
+                yield favorites_model_1.default.deleteMany({ coin_id: coin._id });
+                logger.info(`Deleted from favorites for coin ${coin._id}`);
+            }
+            catch (error) {
+                logger.error("Error deleting from FavoritesModel:", error);
+                throw new Error("Failed to delete coin from favorites");
+            }
+            // Delete the cropped logo from Cloudinary if exists
+            if (coin.croppedLogo) {
+                const publicId = (0, removeImageCloudinary_1.getPublicIdFromUrl)(coin.croppedLogo);
+                if (publicId) {
+                    try {
+                        yield (0, removeImageCloudinary_1.removeImageFromCloudinary)(publicId);
+                        logger.info(`Deleted image from Cloudinary for coin ${coin._id}`);
+                    }
+                    catch (error) {
+                        logger.error("Failed to delete image from Cloudinary:", error);
+                        throw new Error("Failed to delete image from Cloudinary");
+                    }
                 }
             }
+            // Delete the coin
+            yield coin_model_1.default.findByIdAndDelete(coinId);
+            logger.info(`Successfully deleted coin ${coinId}`);
+            return true;
         }
-        // Delete the coin
-        await coin_model_1.default.findByIdAndDelete(coinId);
-        logger.info(`Successfully deleted coin ${coinId}`);
-        return true;
-    }
-    catch (error) {
-        logger.error("Error in deleteCoinById:", error);
-        return false;
-    }
+        catch (error) {
+            logger.error("Error in deleteCoinById:", error);
+            return false;
+        }
+    });
 }
-async function coinBySlug(slug) {
-    try {
-        const coin = await coin_model_1.default.findOne({ slug }, {
-            promoted: 0,
-            premium: 0,
-            createdAt: 0,
-            updatedAt: 0,
-            isFavorited: 0,
-        }).lean();
-        if (!coin) {
-            logger.warn(`Coin not found with slug: ${slug}`);
-            return null;
+function coinBySlug(slug) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const coin = yield coin_model_1.default.findOne({ slug }, {
+                promoted: 0,
+                premium: 0,
+                createdAt: 0,
+                updatedAt: 0,
+                isFavorited: 0,
+            }).lean();
+            if (!coin) {
+                logger.warn(`Coin not found with slug: ${slug}`);
+                return null;
+            }
+            logger.info(`Successfully retrieved coin with slug: ${slug}`);
+            return Object.assign(Object.assign({}, coin), { _id: coin._id.toString(), logo: null });
         }
-        logger.info(`Successfully retrieved coin with slug: ${slug}`);
-        return {
-            ...coin,
-            _id: coin._id.toString(),
-            logo: null,
-        };
-    }
-    catch (error) {
-        logger.error("Error in coinBySlug:", error);
-        throw new Error("Failed to retrieve coin details");
-    }
+        catch (error) {
+            logger.error("Error in coinBySlug:", error);
+            throw new Error("Failed to retrieve coin details");
+        }
+    });
 }

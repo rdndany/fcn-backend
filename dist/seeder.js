@@ -1,4 +1,13 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -9,21 +18,21 @@ const faker_1 = require("@faker-js/faker");
 const coin_model_1 = __importDefault(require("./models/coin.model"));
 const user_model_1 = __importDefault(require("./models/user.model"));
 dotenv_1.default.config(); // Load environment variables
-const seedCoins = async () => {
+const seedCoins = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        await mongoose_1.default.connect(process.env.MONGO_URI);
+        yield mongoose_1.default.connect(process.env.MONGO_URI);
         console.log("✅ Connected to MongoDB");
         // Exclude specific coin IDs from deletion
         const excludedCoinIds = ["67da191e6c742ca65bdf9da0"];
         // Clear existing coins except the ones we want to exclude
-        await coin_model_1.default.deleteMany({
+        yield coin_model_1.default.deleteMany({
             _id: {
                 $nin: excludedCoinIds.map((id) => new mongoose_1.default.Types.ObjectId(id).toString()),
             }, // Convert each ID to ObjectId and then to string
         });
         console.log("🗑️ Existing coins (except excluded ones) deleted");
         //Fetch the entire user document
-        const author = await user_model_1.default.findById("user_2uW7bvjpqchkKmt7h3WdBtx3rS0");
+        const author = yield user_model_1.default.findById("user_2uW7bvjpqchkKmt7h3WdBtx3rS0");
         if (!author) {
             throw new Error("Author not found!");
         }
@@ -123,19 +132,19 @@ const seedCoins = async () => {
                 };
             });
             // Insert the current batch of 10 coins
-            await coin_model_1.default.insertMany(coins);
+            yield coin_model_1.default.insertMany(coins);
             console.log(`🚀 Batch ${Math.floor(i / batchSize) + 1} of coins seeded successfully!`);
             // You can add a delay between batches if needed, for example, using `setTimeout`
             // await new Promise(resolve => setTimeout(resolve, 2000)); // 2 seconds delay between batches
         }
         // Disconnect
-        await mongoose_1.default.disconnect();
+        yield mongoose_1.default.disconnect();
         console.log("🔌 Database connection closed");
     }
     catch (error) {
         console.error("❌ Error seeding database:", error);
         process.exit(1);
     }
-};
+});
 // Execute seeding
 seedCoins();

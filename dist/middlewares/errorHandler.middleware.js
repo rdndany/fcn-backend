@@ -7,7 +7,8 @@ const zod_1 = require("zod");
 const error_code_enum_1 = require("../enums/error-code.enum");
 const log4js_1 = require("log4js");
 const formatZodError = (res, error) => {
-    const errors = error?.issues?.map((err) => ({
+    var _a;
+    const errors = (_a = error === null || error === void 0 ? void 0 : error.issues) === null || _a === void 0 ? void 0 : _a.map((err) => ({
         field: err.path.join("."),
         message: err.message,
     }));
@@ -37,7 +38,7 @@ const errorHandler = (error, req, res, next) => {
     logger.error(error);
     return res.status(http_config_1.HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
         message: "Internal Server Error",
-        error: error?.message || "Unknow error occurred",
+        error: (error === null || error === void 0 ? void 0 : error.message) || "Unknow error occurred",
     });
 };
 exports.errorHandler = errorHandler;

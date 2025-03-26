@@ -55,7 +55,7 @@ export interface CoinDocument extends Document {
   todayVotes: number;
   price: number;
   mkap: number;
-  liquidity?: number;
+  liquidity: number;
   price24h: number;
   premium: boolean;
   status: CoinStatus;

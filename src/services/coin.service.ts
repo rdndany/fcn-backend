@@ -195,6 +195,7 @@ export const getCoinsPromoted = async (): Promise<Coin[]> => {
         isFavorited: 1,
         address: 1,
         status: 1,
+        totalViews: 1,
       })
       .sort({ votes: -1, _id: 1 }) // Consistent sorting with secondary key
       .lean();
@@ -212,6 +213,116 @@ export const getCoinsPromoted = async (): Promise<Coin[]> => {
   } catch (error) {
     logger.error("Error in getCoinsPromoted:", error);
     throw new Error("Failed to fetch promoted coins");
+  }
+};
+
+export const getTopGainersCoins = async (): Promise<Coin[]> => {
+  try {
+    const cacheKey = "top-gainers-coins";
+    const cacheData = await getCache<Coin[]>(redisClient, cacheKey);
+    if (cacheData) {
+      logger.info(
+        `Cache hit for top gainers coins, found ${cacheData.length} coins`
+      );
+      return cacheData;
+    }
+
+    const topGainers = await CoinModel.find({
+      price24h: { $gt: 0 },
+      status: CoinStatus.APPROVED,
+    })
+      .select({
+        logo: 1,
+        name: 1,
+        chain: 1,
+        slug: 1,
+        price24h: 1,
+      })
+      .sort({ price24h: -1 })
+      .limit(9)
+      .lean();
+
+    await setCache(redisClient, cacheKey, topGainers, "ex", 60 * 10); // 10 minutes cache
+    logger.info(`Cached ${topGainers.length} top gainers coins`);
+
+    return topGainers as Coin[];
+  } catch (error) {
+    logger.error("Error in getTopGainersCoins:", error);
+    throw new Error("Failed to fetch top gainers coins");
+  }
+};
+
+export const getRecentlyAddedCoins = async (): Promise<Coin[]> => {
+  try {
+    const cacheKey = "recently-added-coins";
+    const cacheData = await getCache<Coin[]>(redisClient, cacheKey);
+    if (cacheData) {
+      logger.info(
+        `Cache hit for recently added coins, found ${cacheData.length} coins`
+      );
+      return cacheData;
+    }
+
+    const recentlyAdded = await CoinModel.find({
+      createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      status: CoinStatus.APPROVED,
+    })
+      .select({
+        logo: 1,
+        name: 1,
+        chain: 1,
+        slug: 1,
+        createdAt: 1,
+      })
+      .sort({ createdAt: -1 })
+      .limit(9)
+      .lean();
+
+    await setCache(redisClient, cacheKey, recentlyAdded, "ex", 60 * 10); // 10 minutes cache
+    logger.info(`Cached ${recentlyAdded.length} recently added coins`);
+
+    return recentlyAdded as Coin[];
+  } catch (error) {
+    logger.error("Error in getRecentlyAdded:", error);
+    throw new Error("Failed to fetch recently added coins");
+  }
+};
+
+export const getPresaleCoins = async (): Promise<Coin[]> => {
+  try {
+    const cacheKey = "presale-coins";
+    const cacheData = await getCache<Coin[]>(redisClient, cacheKey);
+    if (cacheData) {
+      logger.info(
+        `Cache hit for presale coins, found ${cacheData.length} coins`
+      );
+      return cacheData;
+    }
+
+    const presaleCoins = await CoinModel.find({
+      "presale.enabled": true,
+      status: CoinStatus.APPROVED,
+    })
+      .select({
+        logo: 1,
+        name: 1,
+        symbol: 1,
+        chain: 1,
+        slug: 1,
+        presale: 1,
+        createdAt: 1,
+      })
+      .sort({ createdAt: -1 })
+      .limit(9)
+      .lean();
+
+    await setCache(redisClient, cacheKey, presaleCoins, "ex", 60 * 10); // 10 minutes cache
+    logger.info(`Cached ${presaleCoins.length} presale coins`);
+
+    return presaleCoins as Coin[];
+  } catch (error) {
+    logger.error("Error in getPresaleCoins:", error);
+    throw new Error("Failed to fetch presale coins");
   }
 };
 

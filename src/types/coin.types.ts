@@ -220,6 +220,22 @@ export interface Coin {
   isFavorited?: boolean; // Optional until flags are added
 }
 
+export interface TrendingCoin {
+  name: string;
+  symbol: string;
+  chain: string;
+  presale: PresaleInfo;
+  fairlaunch: FairlaunchInfo;
+  audit: AuditInfo;
+  kyc: KycInfo;
+  launchDate: number;
+  totalViews: number;
+  price: number;
+  price24h: number;
+  slug: string;
+  logo?: string;
+}
+
 export interface PendingCoin {
   _id: Types.ObjectId | string;
   name: string;

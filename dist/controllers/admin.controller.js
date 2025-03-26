@@ -1,9 +1,18 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateCoinPrices = exports.promoteCoin = exports.declineCoin = exports.approveCoin = exports.getFairlaunchCoinsController = exports.getPresaleCoinsController = exports.getAdminPromotedCoinsController = exports.getApprovedCoinsController = exports.getPendingCoinsController = void 0;
+exports.promoteCoinToTrendingRank = exports.deleteUser = exports.updateUserRole = exports.getAllUsersController = exports.updateCoinPrices = exports.promoteCoin = exports.declineCoin = exports.approveCoin = exports.getFairlaunchCoinsController = exports.getPresaleCoinsController = exports.getAdminPromotedCoinsController = exports.getApprovedCoinsController = exports.getPendingCoinsController = void 0;
 const http_config_1 = require("../config/http.config");
 const coin_model_1 = __importDefault(require("../models/coin.model"));
 const query_params_service_1 = require("../services/query-params.service");
@@ -11,15 +20,17 @@ const coin_utils_1 = require("../utils/coin.utils");
 const log4js_1 = require("log4js");
 const admin_service_1 = require("../services/admin.service");
 const coin_service_1 = require("../services/coin.service");
+const email_service_1 = require("../services/email.service");
+const user_model_1 = __importDefault(require("../models/user.model"));
 const logger = (0, log4js_1.getLogger)("admin-controller");
-const getPendingCoinsController = async (req, res) => {
+const getPendingCoinsController = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const params = (0, query_params_service_1.processQueryParams)(req.query);
         // logger.info("Fetching pending coins with params:", {
         //   pageSize: params.pageSize,
         //   pageNumber: params.pageNumber,
         // });
-        const pendingCoinsData = await (0, admin_service_1.getCoinsPending)({
+        const pendingCoinsData = yield (0, admin_service_1.getCoinsPending)({
             pageSize: params.pageSize,
             pageNumber: params.pageNumber,
         });
@@ -55,12 +66,13 @@ const getPendingCoinsController = async (req, res) => {
             error: error instanceof Error ? error.message : "Unknown error",
         });
     }
-};
+});
 exports.getPendingCoinsController = getPendingCoinsController;
-const getApprovedCoinsController = async (req, res) => {
+const getApprovedCoinsController = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     try {
         const params = (0, query_params_service_1.processQueryParams)(req.query);
-        const searchValue = req.query.searchValue?.toString() || "";
+        const searchValue = ((_a = req.query.searchValue) === null || _a === void 0 ? void 0 : _a.toString()) || "";
         // logger.info("Fetching approved coins with params:", {
         //   pageSize: params.pageSize,
         //   pageNumber: params.pageNumber,
@@ -69,7 +81,7 @@ const getApprovedCoinsController = async (req, res) => {
         //   sortDirection: params.sortDirection,
         //   searchValue: searchValue,
         // });
-        const approvedCoinsData = await (0, admin_service_1.getCoinsApproved)({
+        const approvedCoinsData = yield (0, admin_service_1.getCoinsApproved)({
             pageSize: params.pageSize,
             pageNumber: params.pageNumber,
             chains: params.chains,
@@ -109,16 +121,16 @@ const getApprovedCoinsController = async (req, res) => {
             error: error instanceof Error ? error.message : "Unknown error",
         });
     }
-};
+});
 exports.getApprovedCoinsController = getApprovedCoinsController;
-const getAdminPromotedCoinsController = async (req, res) => {
+const getAdminPromotedCoinsController = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const params = (0, query_params_service_1.processQueryParams)(req.query);
         // logger.info("Fetching admin promoted coins with params:", {
         //   pageSize: params.pageSize,
         //   pageNumber: params.pageNumber,
         // });
-        const promotedCoinsData = await (0, admin_service_1.getCoinsAdminPromoted)({
+        const promotedCoinsData = yield (0, admin_service_1.getCoinsAdminPromoted)({
             pageSize: params.pageSize,
             pageNumber: params.pageNumber,
         });
@@ -154,16 +166,16 @@ const getAdminPromotedCoinsController = async (req, res) => {
             error: error instanceof Error ? error.message : "Unknown error",
         });
     }
-};
+});
 exports.getAdminPromotedCoinsController = getAdminPromotedCoinsController;
-const getPresaleCoinsController = async (req, res) => {
+const getPresaleCoinsController = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const params = (0, query_params_service_1.processQueryParams)(req.query);
         // logger.info("Fetching presale coins with params:", {
         //   pageSize: params.pageSize,
         //   pageNumber: params.pageNumber,
         // });
-        const presaleCoinsData = await (0, admin_service_1.getCoinsPresale)({
+        const presaleCoinsData = yield (0, admin_service_1.getCoinsPresale)({
             pageSize: params.pageSize,
             pageNumber: params.pageNumber,
         });
@@ -199,16 +211,16 @@ const getPresaleCoinsController = async (req, res) => {
             error: error instanceof Error ? error.message : "Unknown error",
         });
     }
-};
+});
 exports.getPresaleCoinsController = getPresaleCoinsController;
-const getFairlaunchCoinsController = async (req, res) => {
+const getFairlaunchCoinsController = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const params = (0, query_params_service_1.processQueryParams)(req.query);
         // logger.info("Fetching fairlaunch coins with params:", {
         //   pageSize: params.pageSize,
         //   pageNumber: params.pageNumber,
         // });
-        const fairlaunchCoinsData = await (0, admin_service_1.getCoinsFairlaunch)({
+        const fairlaunchCoinsData = yield (0, admin_service_1.getCoinsFairlaunch)({
             pageSize: params.pageSize,
             pageNumber: params.pageNumber,
         });
@@ -244,9 +256,9 @@ const getFairlaunchCoinsController = async (req, res) => {
             error: error instanceof Error ? error.message : "Unknown error",
         });
     }
-};
+});
 exports.getFairlaunchCoinsController = getFairlaunchCoinsController;
-const approveCoin = async (req, res) => {
+const approveCoin = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { coinId } = req.params;
         if (!coinId) {
@@ -255,24 +267,37 @@ const approveCoin = async (req, res) => {
                 .json({ message: "Coin ID is required" });
             return;
         }
-        const success = await (0, admin_service_1.approveCoinById)(coinId);
-        if (!success) {
+        // Fetch the approved coin
+        const approvedCoin = yield (0, admin_service_1.approveCoinById)(coinId);
+        if (!approvedCoin) {
             res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
             return;
         }
+        // Fetch user by coin.author (assuming coin.author is userId)
+        const user = yield user_model_1.default.findById(approvedCoin.author);
+        if (!user) {
+            res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({ message: "User not found" });
+            return;
+        }
+        // Send the approval email to the user
+        const emailResult = yield (0, email_service_1.sendCoinApprovedMail)(user.email, user.name, approvedCoin.name, approvedCoin.slug);
+        if (!emailResult.success) {
+            console.error("Failed to send approval email:", emailResult.error);
+            // Log the error but continue with the coin approval process
+        }
         // Invalidate relevant caches
-        await (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.APPROVAL);
+        yield (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.APPROVAL);
         res.status(http_config_1.HTTPSTATUS.OK).json({ message: "Coin approved successfully" });
     }
     catch (error) {
-        // logger.error("Error in approveCoin controller:", error);
+        console.error("Error in approveCoin controller:", error);
         res
             .status(http_config_1.HTTPSTATUS.INTERNAL_SERVER_ERROR)
             .json({ message: "Failed to approve coin" });
     }
-};
+});
 exports.approveCoin = approveCoin;
-const declineCoin = async (req, res) => {
+const declineCoin = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { coinId } = req.params;
         if (!coinId) {
@@ -281,13 +306,25 @@ const declineCoin = async (req, res) => {
                 .json({ message: "Coin ID is required" });
             return;
         }
-        const coin = await (0, admin_service_1.declineCoinById)(coinId);
-        if (!coin) {
+        const deniedCoin = yield (0, admin_service_1.declineCoinById)(coinId);
+        if (!deniedCoin) {
             res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
             return;
         }
+        // Fetch user by coin.author (assuming coin.author is userId)
+        const user = yield user_model_1.default.findById(deniedCoin.author);
+        if (!user) {
+            res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({ message: "User not found" });
+            return;
+        }
+        // Send the approval email to the user
+        const emailResult = yield (0, email_service_1.sendCoinDeniedMail)(user.email, user.name, deniedCoin.name);
+        if (!emailResult.success) {
+            console.error("Failed to send approval email:", emailResult.error);
+            // Log the error but continue with the coin approval process
+        }
         // Invalidate relevant caches
-        await (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.DECLINE);
+        yield (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.DECLINE);
         res.status(http_config_1.HTTPSTATUS.OK).json({ message: "Coin declined successfully" });
     }
     catch (error) {
@@ -296,9 +333,9 @@ const declineCoin = async (req, res) => {
             .status(http_config_1.HTTPSTATUS.INTERNAL_SERVER_ERROR)
             .json({ message: "Failed to decline coin" });
     }
-};
+});
 exports.declineCoin = declineCoin;
-const promoteCoin = async (req, res) => {
+const promoteCoin = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { coinId } = req.params;
         if (!coinId) {
@@ -307,13 +344,13 @@ const promoteCoin = async (req, res) => {
                 .json({ message: "Coin ID is required" });
             return;
         }
-        const result = await (0, admin_service_1.promoteCoinById)(coinId);
+        const result = yield (0, admin_service_1.promoteCoinById)(coinId);
         if (!result) {
             res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
             return;
         }
         // Invalidate only relevant caches
-        await (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.PROMOTION);
+        yield (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.PROMOTION);
         res.status(http_config_1.HTTPSTATUS.OK).json({
             success: true,
             message: result.promoted
@@ -328,9 +365,9 @@ const promoteCoin = async (req, res) => {
             message: "Failed to promote coin",
         });
     }
-};
+});
 exports.promoteCoin = promoteCoin;
-const updateCoinPrices = async (req, res) => {
+const updateCoinPrices = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { coinId } = req.params;
         if (!coinId) {
@@ -340,7 +377,7 @@ const updateCoinPrices = async (req, res) => {
             return;
         }
         // Find the coin by ID
-        const coin = await coin_model_1.default.findById(coinId);
+        const coin = yield coin_model_1.default.findById(coinId);
         if (!coin) {
             res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
             return;
@@ -354,11 +391,11 @@ const updateCoinPrices = async (req, res) => {
         }
         // Fetch new price data based on the coin's chain
         const priceData = chain === "sol"
-            ? await (0, coin_service_1.getSOLCoinPriceData)(address)
-            : await (0, coin_service_1.getEVMCoinPriceData)(address, chain);
+            ? yield (0, coin_service_1.getSOLCoinPriceData)(address)
+            : yield (0, coin_service_1.getEVMCoinPriceData)(address, chain);
         // Update the coin's price-related fields
         Object.assign(coin, priceData);
-        await coin.save();
+        yield coin.save();
         logger.info(`Price update completed for ${coin.name}:`, {
             coinId,
             oldPrice: coin.price,
@@ -367,7 +404,7 @@ const updateCoinPrices = async (req, res) => {
             address,
         });
         // Invalidate relevant caches
-        await (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.UPDATE_PRICE);
+        yield (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.UPDATE_PRICE);
         res.status(http_config_1.HTTPSTATUS.OK).json({
             message: `Prices updated successfully for ${coin.name}`,
         });
@@ -376,5 +413,185 @@ const updateCoinPrices = async (req, res) => {
         logger.error("Error in updateCoinPrices controller:", error);
         res.status(500).json({ message: "Failed to update coin prices" });
     }
-};
+});
 exports.updateCoinPrices = updateCoinPrices;
+const getAllUsersController = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const params = (0, query_params_service_1.processUserQueryParams)(req.query);
+        const searchValue = ((_a = req.query.searchValue) === null || _a === void 0 ? void 0 : _a.toString()) || "";
+        // logger.info("Fetching fairlaunch coins with params:", {
+        //   pageSize: params.pageSize,
+        //   pageNumber: params.pageNumber,
+        // });
+        const usersCoinsData = yield (0, admin_service_1.getUsers)({
+            pageSize: params.pageSize,
+            pageNumber: params.pageNumber,
+            searchValue: searchValue,
+        });
+        if (!usersCoinsData || !usersCoinsData.users) {
+            // logger.warn("No fairlaunch coins found");
+            res.status(http_config_1.HTTPSTATUS.OK).json({
+                success: true,
+                message: "No fairlaunch coins found",
+                users: [],
+                totalCount: 0,
+                totalPages: 0,
+                skip: 0,
+            });
+            return;
+        }
+        // logger.info(
+        //   `Successfully retrieved ${fairlaunchCoinsData.coins.length} fairlaunch coins`
+        // );
+        res.status(http_config_1.HTTPSTATUS.OK).json({
+            success: true,
+            message: "Users fetched successfully",
+            users: usersCoinsData.users,
+            totalCount: usersCoinsData.totalCount,
+            totalPages: usersCoinsData.totalPages,
+            skip: usersCoinsData.skip,
+        });
+    }
+    catch (error) {
+        // logger.error("Error in getFairlaunchCoinsController:", error);
+        res.status(http_config_1.HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: "Failed to fetch users",
+            error: error instanceof Error ? error.message : "Unknown error",
+        });
+    }
+});
+exports.getAllUsersController = getAllUsersController;
+const updateUserRole = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { userId } = req.params;
+        const { role } = req.body;
+        // Validate input
+        if (!userId) {
+            res
+                .status(http_config_1.HTTPSTATUS.BAD_REQUEST)
+                .json({ message: "User ID is required" });
+            return;
+        }
+        if (!role || !["user", "admin"].includes(role)) {
+            res.status(http_config_1.HTTPSTATUS.BAD_REQUEST).json({
+                message: "Valid role is required (user or admin)",
+            });
+            return;
+        }
+        // Update in both systems
+        const updatedUser = yield (0, admin_service_1.updateUserRoleById)(userId, role);
+        if (!updatedUser) {
+            res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({ message: "User not found" });
+            return;
+        }
+        // Invalidate relevant caches
+        yield (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.UPDATE_ROLE);
+        res.status(http_config_1.HTTPSTATUS.OK).json({
+            success: true,
+            message: "User role updated successfully in both systems",
+            user: updatedUser,
+        });
+    }
+    catch (error) {
+        logger.error("Error in updateUserRole controller:", error);
+        res.status(http_config_1.HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: "Failed to update user role",
+            error: error instanceof Error ? error.message : "Unknown error",
+        });
+    }
+});
+exports.updateUserRole = updateUserRole;
+const deleteUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { userId } = req.params;
+        if (!userId) {
+            res
+                .status(http_config_1.HTTPSTATUS.BAD_REQUEST)
+                .json({ message: "User ID is required" });
+            return;
+        }
+        // Only delete from Clerk
+        const deletionSuccess = yield (0, admin_service_1.deleteUserFromClerkOnly)(userId);
+        if (!deletionSuccess) {
+            res.status(http_config_1.HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+                message: "Failed to delete user from Clerk",
+            });
+            return;
+        }
+        // Invalidate relevant caches
+        yield (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.DELETE_USER);
+        res.status(http_config_1.HTTPSTATUS.OK).json({
+            success: true,
+            message: "User deleted successfully",
+        });
+    }
+    catch (error) {
+        logger.error("Error in deleteUser controller:", error);
+        res.status(http_config_1.HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: "Failed to delete user",
+            error: error instanceof Error ? error.message : "Unknown error",
+        });
+    }
+});
+exports.deleteUser = deleteUser;
+const promoteCoinToTrendingRank = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { coinId, rank } = req.params;
+        // Ensure both coinId and rank are provided
+        if (!coinId || !rank) {
+            res
+                .status(http_config_1.HTTPSTATUS.BAD_REQUEST)
+                .json({ message: "Coin ID and rank are required" });
+            return;
+        }
+        // Ensure the rank is valid (between 1 and 10)
+        const rankNum = parseInt(rank, 10);
+        if (isNaN(rankNum) || rankNum < 1 || rankNum > 10) {
+            res
+                .status(http_config_1.HTTPSTATUS.BAD_REQUEST)
+                .json({ message: "Rank must be between 1 and 10" });
+            return;
+        }
+        // Fetch the coin by coinId
+        const coin = yield coin_model_1.default.findById(coinId);
+        if (!coin) {
+            res.status(http_config_1.HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
+            return;
+        }
+        // Set the rank and expiration (24 hours from now)
+        const expirationTime = new Date();
+        expirationTime.setHours(expirationTime.getHours() + 24); // Add 24 hours
+        const updatedCoin = yield coin_model_1.default.findByIdAndUpdate(coinId, {
+            $set: {
+                paidTrendingRank: rankNum,
+                paidTrendingExpiry: expirationTime,
+            },
+        }, { new: true } // Return the updated coin
+        );
+        if (!updatedCoin) {
+            res.status(http_config_1.HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+                message: "Failed to update coin's rank",
+            });
+            return;
+        }
+        // Invalidate the cache for trending
+        yield (0, coin_utils_1.invalidateCoinCaches)(coin_utils_1.CacheInvalidationScope.PROMOTION);
+        // Send success response
+        res.status(http_config_1.HTTPSTATUS.OK).json({
+            success: true,
+            message: `Coin has been promoted to rank ${rankNum} for 24 hours`,
+        });
+    }
+    catch (error) {
+        console.error("Error promoting coin to rank:", error);
+        res.status(http_config_1.HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: "Failed to promote coin to specified rank",
+        });
+    }
+});
+exports.promoteCoinToTrendingRank = promoteCoinToTrendingRank;

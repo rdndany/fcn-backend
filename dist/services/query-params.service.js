@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processQueryParams = processQueryParams;
+exports.processUserQueryParams = processUserQueryParams;
 function processQueryParams(query) {
     // 1. Extract and set default values
     const { pageSize = "25", pageNumber = "1", presale = "false", fairlaunch = "false", chain = [""], audit = "false", kyc = "false", sortColumn = "todayVotes", sortDirection = "descending", selectedKeys = ["Today_best"], userId = "", } = query;
@@ -59,5 +60,20 @@ function processQueryParams(query) {
         sortDirection: finalSortDirection,
         selectedKeys: finalSelectedKeys.map((key) => String(key)),
         userId: String(userId || ""),
+    };
+}
+function processUserQueryParams(query) {
+    // 1. Extract and set default values
+    const { pageSize = "25", pageNumber = "1" } = query;
+    // 2. Process pagination
+    let size = parseInt(pageSize, 10);
+    let page = parseInt(pageNumber, 10);
+    // Validate pagination values
+    size = !isNaN(size) && size > 0 ? size : 25;
+    page = !isNaN(page) && page > 0 ? page : 1;
+    // 8. Return processed parameters
+    return {
+        pageSize: size,
+        pageNumber: page,
     };
 }
