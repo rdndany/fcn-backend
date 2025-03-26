@@ -570,3 +570,79 @@ export const getCoinBySlug = async (
       .json({ message: "Failed to retrieve coin details" });
   }
 };
+
+export const getFetchCoinBySlug = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { slug } = req.params;
+    if (!slug) {
+      res.status(HTTPSTATUS.BAD_REQUEST).json({
+        success: false,
+        message: "Slug parameter is required",
+      });
+      return;
+    }
+
+    const coinDetails = await coinBySlug(slug);
+
+    if (!coinDetails) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({
+        success: false,
+        message: "Coin not found",
+      });
+      return;
+    }
+
+    // Track view analytics
+    const ipAddress = getClientIp(req);
+    const userAgent = req.headers["user-agent"] || "unknown";
+
+    if (!ipAddress) {
+      res.status(HTTPSTATUS.BAD_REQUEST).json({
+        success: false,
+        message: "Could not determine client IP address",
+      });
+      return;
+    }
+
+    try {
+      const coinId = new mongoose.Types.ObjectId(coinDetails._id);
+      await trackView(coinId, ipAddress, userAgent);
+    } catch (trackingError) {
+      // Continue even if tracking fails
+    }
+
+    // Get view statistics
+    let stats;
+    try {
+      stats = await getViewStats(coinDetails._id);
+    } catch (statsError) {
+      stats = { total_views: 0, last_24h: 0 };
+    }
+
+    res.status(HTTPSTATUS.OK).json({
+      success: true,
+      data: {
+        ...coinDetails,
+        stats,
+      },
+    });
+  } catch (error) {
+    let errorMessage =
+      "An unexpected error occurred while fetching coin details";
+
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === "string") {
+      errorMessage = error;
+    }
+
+    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: errorMessage,
+      error: process.env.NODE_ENV === "development" ? errorMessage : undefined,
+    });
+  }
+};

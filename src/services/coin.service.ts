@@ -484,10 +484,8 @@ export async function coinBySlug(slug: string): Promise<CoinDetails | null> {
       { slug },
       {
         promoted: 0,
-        premium: 0,
         createdAt: 0,
         updatedAt: 0,
-        isFavorited: 0,
       }
     ).lean();
 
