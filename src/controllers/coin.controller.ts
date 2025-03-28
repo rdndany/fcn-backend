@@ -550,6 +550,16 @@ export const getCoinBySlug = async (
         .json({ message: "IP address not found" });
       return;
     }
+
+    // Only block Node.js user agents, allow all other user agents
+    if (userAgent && userAgent.toLowerCase().includes("node")) {
+      // Don't track the view for Node.js user agents, but still return the coin details
+      res
+        .status(HTTPSTATUS.OK)
+        .json({ ...coinDetails, stats: { total_views: 0, last_24h: 0 } });
+      return;
+    }
+
     // Convert coinDetails._id to ObjectId
     const coinId = new mongoose.Types.ObjectId(coinDetails._id);
     await trackView(coinId, ipAddress as string, userAgent);

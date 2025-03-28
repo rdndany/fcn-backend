@@ -17,6 +17,7 @@ export const trackViewController = async (
         success: false,
         message: "Server-side tracking not allowed",
       });
+      return;
     }
 
     // Convert coinId to ObjectId
