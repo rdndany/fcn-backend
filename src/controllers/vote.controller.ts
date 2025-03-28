@@ -58,9 +58,6 @@ export async function voteByCoinId(req: Request, res: Response): Promise<void> {
 
     const { vote, updatedCoin } = await createVoteByCoinId(coin_id, userIp);
 
-    // Invalidate relevant caches
-    await invalidateCoinCaches(CacheInvalidationScope.UPDATE);
-
     // logger.info("Successfully recorded vote:", {
     //   coin_id,
     //   updatedVotes: {

@@ -116,7 +116,8 @@ export async function invalidateCoinCaches(
           "coinsPending",
           "coinsFiltered",
           "userCoins",
-          "coinsApproved"
+          "coinsApproved",
+          "coin-details"
         );
         break;
 
@@ -140,7 +141,8 @@ export async function invalidateCoinCaches(
           "coinsAdminPromoted",
           "coinsFiltered",
           "coinsPromoted",
-          "userCoins"
+          "userCoins",
+          "coin-details"
         );
         break;
 
@@ -187,23 +189,35 @@ export async function invalidateCoinCaches(
         return;
     }
 
-    // Handle invalidations
-    const invalidationPromises = keysToInvalidate.map((key) => {
+    // Create a pipeline for bulk operations
+    const pipeline = redisClient.pipeline();
+
+    keysToInvalidate.forEach((key) => {
       if (key === "coinsPromoted") {
-        // Exact match for these keys
-        return deleteCache(redisClient, key);
+        // Exact match deletion
+        pipeline.del(key);
       } else {
-        // Prefix match for other keys
-        return deleteAllThatStartsWithPrefix(redisClient, key);
+        // Prefix-based deletion (using UNLINK instead of DEL for non-blocking)
+        pipeline.eval(
+          `local keys = redis.call('keys', ARGV[1]..'*')
+           if #keys > 0 then
+             return redis.call('unlink', unpack(keys))
+           end
+           return 0`,
+          0, // No keys are passed, only ARGV
+          key
+        );
       }
     });
 
-    await Promise.all(invalidationPromises);
-    logger.info(`Successfully invalidated caches for scope: ${scope}`, {
+    // Execute all commands in a single roundtrip
+    await pipeline.exec();
+
+    logger.warn(`Successfully invalidated caches for scope: ${scope}`, {
       invalidatedKeys: keysToInvalidate,
     });
   } catch (error) {
     logger.error(`Error invalidating coin caches for scope ${scope}:`, error);
-    throw new Error(`Failed to invalidate coin caches for scope: ${scope}`);
+    throw error; // Re-throw to let caller handle
   }
 }

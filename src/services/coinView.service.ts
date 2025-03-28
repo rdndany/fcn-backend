@@ -90,6 +90,8 @@ export const getViewStats = async (
 // Define weights for views, votes, and price24h
 const viewWeight = 0.5; // Adjust weight for views
 const voteWeight = 0.3; // Adjust weight for votes
+
+const priceThreshold = 100; // +100 todayVotes increase threshold
 const priceWeight = 0.2; // Weight for price24h change influence
 
 // Define a threshold for price24h change to apply a boost
@@ -182,8 +184,12 @@ export const getAllCoinsTrending = async (limit: number): Promise<any[]> => {
     // Calculate trending score for each coin
     const coinsWithTrendingScore = coinsWithVotes.map((coin) => {
       // Calculate base trending score using views and votes
-      let trendingScore =
-        viewWeight * coin.totalViews + voteWeight * coin.totalVotes;
+      let trendingScore = viewWeight * coin.totalViews;
+
+      // Check if todayVotes is over 100 and count on trending score
+      if (coin.todayVotes > priceThreshold) {
+        trendingScore += voteWeight * coin.todayVotes;
+      }
 
       // Check if price24h has increased and apply a boost if needed, but ignore if liquidity is less than 10k
       if (coin.liquidity >= liquidityThreshold) {

@@ -48,12 +48,6 @@ export const getCoinsPending = async ({
     const totalCount = await CoinModel.countDocuments(filterQuery);
     const totalPages = Math.ceil(totalCount / pageSize);
 
-    // Define sort criteria with type safety
-    const sortCriteria: Record<string, 1 | -1> = {
-      createdAt: -1,
-      _id: 1, // Secondary sort for consistent pagination
-    };
-
     // Execute query with optimized field selection
     const coins = await CoinModel.find(filterQuery)
       .select({
@@ -79,7 +73,7 @@ export const getCoinsPending = async ({
         mkap: 1,
         liquidity: 1,
       })
-      .sort(sortCriteria)
+      .sort({ updatedAt: -1 })
       .skip(skip)
       .limit(pageSize)
       .lean();

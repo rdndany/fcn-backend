@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { asyncHandler } from "../middlewares/asyncHandler.middleware";
 import {
   coinBySlug,
+  coinBySlugDetails,
   deleteCoinById,
   getCoinsFiltered,
   getCoinsPromoted,
@@ -10,7 +11,11 @@ import {
   getTopGainersCoins,
 } from "../services/coin.service";
 import { HTTPSTATUS } from "../config/http.config";
-import { fetchVotesToCoins } from "../services/vote.service";
+import {
+  fetchVotesToCoins,
+  getVotesByCoinId,
+  getVotesByCoinIdToday,
+} from "../services/vote.service";
 import mongoose, { Types } from "mongoose";
 import { getAuth } from "@clerk/express";
 import CoinModel, { CoinStatus } from "../models/coin.model";
@@ -28,6 +33,7 @@ import {
 import { getClientIp } from "request-ip";
 import UserModel from "../models/user.model";
 import { getViewStats, trackView } from "../services/coinView.service";
+import { getFavoritedCoinBySlug } from "../services/favorites.service";
 
 export const getAllCoinsController = async (
   req: CoinQueryParams,
@@ -450,11 +456,7 @@ export const update = async (req: Request, res: Response): Promise<void> => {
     // Invalidate caches
     await invalidateCoinCaches(CacheInvalidationScope.UPDATE);
 
-    res.status(HTTPSTATUS.OK).json({
-      success: true,
-      message: "Coin updated successfully",
-      coin: updatedCoin,
-    });
+    res.status(HTTPSTATUS.OK).json(updatedCoin);
   } catch (error) {
     console.error("Error in update coin:", error);
     res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
@@ -571,78 +573,47 @@ export const getCoinBySlug = async (
   }
 };
 
-export const getFetchCoinBySlug = async (
+export const getCoinBSlugDetails = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
     const { slug } = req.params;
+    const userId = getAuth(req).userId;
+
     if (!slug) {
       res.status(HTTPSTATUS.BAD_REQUEST).json({
-        success: false,
-        message: "Slug parameter is required",
+        message: "Slug is required",
       });
       return;
     }
 
-    const coinDetails = await coinBySlug(slug);
+    const coinDetails = await coinBySlugDetails(slug); // You'll need to implement coinById
+    if (!coinDetails) {
+      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
+      return;
+    }
+    const coinId = coinDetails?._id;
+
+    if (userId) {
+      // check if the coin is favorited
+      const isFavorited = await getFavoritedCoinBySlug(slug, userId);
+      coinDetails.isFavorited = isFavorited;
+
+      const hasVoted = await getVotesByCoinIdToday(coinId);
+      coinDetails.userVoted = hasVoted;
+    }
 
     if (!coinDetails) {
-      res.status(HTTPSTATUS.NOT_FOUND).json({
-        success: false,
-        message: "Coin not found",
-      });
+      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
       return;
     }
 
-    // Track view analytics
-    const ipAddress = getClientIp(req);
-    const userAgent = req.headers["user-agent"] || "unknown";
-
-    if (!ipAddress) {
-      res.status(HTTPSTATUS.BAD_REQUEST).json({
-        success: false,
-        message: "Could not determine client IP address",
-      });
-      return;
-    }
-
-    try {
-      const coinId = new mongoose.Types.ObjectId(coinDetails._id);
-      await trackView(coinId, ipAddress, userAgent);
-    } catch (trackingError) {
-      // Continue even if tracking fails
-    }
-
-    // Get view statistics
-    let stats;
-    try {
-      stats = await getViewStats(coinDetails._id);
-    } catch (statsError) {
-      stats = { total_views: 0, last_24h: 0 };
-    }
-
-    res.status(HTTPSTATUS.OK).json({
-      success: true,
-      data: {
-        ...coinDetails,
-        stats,
-      },
-    });
+    res.status(HTTPSTATUS.OK).json({ ...coinDetails });
   } catch (error) {
-    let errorMessage =
-      "An unexpected error occurred while fetching coin details";
-
-    if (error instanceof Error) {
-      errorMessage = error.message;
-    } else if (typeof error === "string") {
-      errorMessage = error;
-    }
-
-    res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      message: errorMessage,
-      error: process.env.NODE_ENV === "development" ? errorMessage : undefined,
-    });
+    console.error("Error in coinBySlugDetails:", error);
+    res
+      .status(HTTPSTATUS.INTERNAL_SERVER_ERROR)
+      .json({ message: "Failed to retrieve coin details" });
   }
 };

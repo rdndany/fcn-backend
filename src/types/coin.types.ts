@@ -119,6 +119,8 @@ export interface CoinDetails {
   mkap: number;
   liquidity: number;
   status: string;
+  isFavorited?: boolean;
+  userVoted?: boolean;
 }
 
 export type GetCoinsFilteredType = {

@@ -1,4 +1,4 @@
-import { FilterQuery } from "mongoose";
+import mongoose, { FilterQuery } from "mongoose";
 import { Coin, GetCoinsFilteredType } from "../types/coin.types";
 import CoinModel, { CoinDocument, CoinStatus } from "../models/coin.model";
 import { getLogger } from "log4js";
@@ -500,6 +500,40 @@ export async function coinBySlug(slug: string): Promise<CoinDetails | null> {
       _id: coin._id.toString(),
       logo: null,
     } as CoinDetails;
+  } catch (error) {
+    logger.error("Error in coinBySlug:", error);
+    throw new Error("Failed to retrieve coin details");
+  }
+}
+
+export async function coinBySlugDetails(
+  slug: string
+): Promise<CoinDetails | null> {
+  try {
+    const coin = await CoinModel.findOne({ slug }).lean();
+
+    const cacheKey = `coin-details-${slug}`;
+    const cacheData = await getCache<CoinDetails>(redisClient, cacheKey);
+    if (cacheData) {
+      logger.info(`Cache hit for coin details: ${slug}`);
+      return cacheData;
+    }
+
+    if (!coin) {
+      logger.warn(`Coin not found with slug: ${slug}`);
+      return null;
+    }
+
+    logger.info(`Successfully retrieved coin with slug: ${slug}`);
+    const result = {
+      ...coin,
+      _id: coin._id.toString(),
+    } as CoinDetails;
+
+    await setCache(redisClient, cacheKey, result, "ex", 60 * 2); // 2 minutes cache
+    logger.info(`Cached coin details for ${slug}`);
+
+    return result;
   } catch (error) {
     logger.error("Error in coinBySlug:", error);
     throw new Error("Failed to retrieve coin details");

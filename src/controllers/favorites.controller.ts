@@ -92,6 +92,88 @@ export async function favoriteCoinController(
   }
 }
 
+// Add this route in your backend API
+export async function favoriteCoinControllerBySlug(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const { slug } = req.params;
+    const userId = getAuth(req).userId;
+
+    // logger.info("Attempting to update favorite status:", { coinId, userId });
+
+    if (!slug || !userId) {
+      // logger.warn("Missing required parameters:", { coinId, userId });
+      res.status(400).json({
+        success: false,
+        message: "Missing required parameters",
+      });
+      return;
+    }
+    // get coin by slug
+    const coin = await CoinModel.findOne({ slug }).lean();
+    if (!coin) {
+      res.status(404).json({
+        success: false,
+        message: "Coin not found",
+      });
+      return;
+    }
+    const coinObjectId = new Types.ObjectId(coin._id);
+
+    // Check if the user already has the coin in favorites
+    const existingFavorite = await FavoritesModel.findOne({
+      user_id: userId,
+      coin_id: coin._id,
+    }).lean();
+
+    if (existingFavorite) {
+      // If already favorited, remove it (unfavorite)
+      // logger.info("Removing coin from favorites:", { coinId, userId });
+      await FavoritesModel.deleteOne({
+        user_id: userId,
+        coin_id: coin._id,
+      });
+    } else {
+      // If not favorited, add it to favorites
+      // logger.info("Adding coin to favorites:", { coinId, userId });
+      const newFavorite = new FavoritesModel({
+        user_id: userId,
+        coin_id: coin._id,
+      });
+      await newFavorite.save();
+    }
+
+    // After adding/removing from favorites, update the isFavorited flag in coins
+    await updateIsFavoritedFlag([coinObjectId], userId);
+
+    // Invalidate relevant caches using the centralized cache invalidation function
+    await invalidateCoinCaches(CacheInvalidationScope.FAVORITE);
+
+    // logger.info("Successfully updated favorite status:", {
+    //   coinId,
+    //   userId,
+    //   action: existingFavorite ? "unfavorited" : "favorited",
+    // });
+
+    res.status(200).json({
+      success: true,
+      message: `Coin ${
+        existingFavorite ? "unfavorited" : "favorited"
+      } successfully`,
+      isFavorited: !existingFavorite,
+    });
+  } catch (error) {
+    // logger.error("Error in favoriteCoinController:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update favorite status",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+}
+
 export async function getUserFavorites(
   req: Request,
   res: Response

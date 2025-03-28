@@ -6,6 +6,7 @@ import {
   create,
   deleteCoin,
   getAllCoinsController,
+  getCoinBSlugDetails,
   getCoinBySlug,
   getPresaleCoinsController,
   getPromotedCoinsController,
@@ -38,7 +39,13 @@ coinRoutes.get(
 
 coinRoutes.get("/presale", rateLimiterMiddleware, getPresaleCoinsController);
 
-coinRoutes.get("/:slug", rateLimiterMiddleware, getCoinBySlug);
+coinRoutes.get("/slug/:slug", rateLimiterMiddleware, getCoinBySlug);
+
+coinRoutes.get(
+  "/slug-details/:slug",
+  rateLimiterMiddleware,
+  getCoinBSlugDetails
+);
 
 coinRoutes.post("/", checkAuth, rateLimiterMiddleware, create);
 

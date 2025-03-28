@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 
 import { HTTPSTATUS } from "../config/http.config";
 import CoinModel from "../models/coin.model";

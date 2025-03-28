@@ -100,3 +100,21 @@ export async function getFavoritedCoinIds(
     return [];
   }
 }
+
+export async function getFavoritedCoinBySlug(
+  slug: string,
+  userId: string
+): Promise<boolean> {
+  const coin = await CoinModel.findOne({ slug }).lean();
+  if (!coin) {
+    return false;
+  }
+  const coinId = coin._id.toString();
+  const coinObjectId = new Types.ObjectId(coinId);
+  // check if the coin is favorited
+  const isFavorited = await FavoritesModel.findOne({
+    user_id: userId,
+    coin_id: coinObjectId,
+  });
+  return isFavorited ? true : false;
+}

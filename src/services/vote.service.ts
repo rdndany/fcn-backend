@@ -8,6 +8,7 @@ import {
   CacheInvalidationScope,
   invalidateCoinCaches,
 } from "../utils/coin.utils";
+import { deleteCache, redisClient } from "../config/redis.config";
 
 const logger = getLogger("votes");
 
@@ -89,7 +90,8 @@ export const createVoteByCoinId = async (
 
     // Invalidate caches
     await invalidateCoinCaches(CacheInvalidationScope.VOTE);
-
+    // invalidate the coin details cache
+    await deleteCache(redisClient, `coin-details-${coin.slug}`);
     logger.info("Successfully recorded vote:", {
       coin_id,
       coinName: coin.name,
@@ -149,3 +151,17 @@ export async function fetchVotesToCoins({
 
   return coinsWithUpdatedFlags;
 }
+
+export const getVotesByCoinIdToday = async (coin_id: string) => {
+  if (!mongoose.Types.ObjectId.isValid(coin_id)) {
+    throw new Error("Invalid coin_id format");
+  }
+  // count only today votes , if is > 0 then return true
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const votes = await VoteModel.countDocuments({
+    coin_id: coin_id,
+    created_at: { $gte: todayStart },
+  });
+  return votes > 0;
+};
