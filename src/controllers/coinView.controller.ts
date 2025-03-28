@@ -12,6 +12,13 @@ export const trackViewController = async (
     const ipAddress = req.ip || req.headers["x-forwarded-for"] || "unknown";
     const userAgent = req.headers["user-agent"];
 
+    if (userAgent && userAgent.toLowerCase().includes("node")) {
+      res.status(403).json({
+        success: false,
+        message: "Server-side tracking not allowed",
+      });
+    }
+
     // Convert coinId to ObjectId
     const coinIdObjectId = new mongoose.Types.ObjectId(coinId);
     await trackView(coinIdObjectId, ipAddress as string, userAgent);
@@ -35,13 +42,11 @@ export const getAllTrendingCoinsController = async (
     // Fetch the coins ordered by trending score (based on views and votes)
     const coins = await getAllCoinsTrending(limit);
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Trending coins fetched successfully",
-        trendingCoins: coins,
-      });
+    res.status(200).json({
+      success: true,
+      message: "Trending coins fetched successfully",
+      trendingCoins: coins,
+    });
   } catch (error) {
     console.error("Error fetching all trending coins:", error);
     res.status(500).json({

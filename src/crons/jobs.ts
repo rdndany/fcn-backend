@@ -3,6 +3,8 @@ import CoinModel, { CoinDocument, CoinStatus } from "../models/coin.model";
 import Moralis from "moralis";
 import { getSafeNumber } from "../utils/getSafeNumber";
 import FavoritesModel from "../models/favorites.model";
+import VoteModel from "../models/vote.model";
+import mongoose from "mongoose";
 
 const logger = getLogger("moralis");
 
@@ -403,5 +405,39 @@ export const resetPriceMkapLiq = async () => {
     );
   } catch (error) {
     console.error("Error resetting token price mkap and liquidity:", error);
+  }
+};
+
+export const deleteOldVotes = async (): Promise<{ deletedCount: number }> => {
+  try {
+    // Calculate the cutoff date (start of yesterday)
+    const cutoffDate = new Date();
+    cutoffDate.setUTCHours(0, 0, 0, 0);
+    cutoffDate.setDate(cutoffDate.getDate() - 1); // Start of yesterday
+
+    logger.info(`Deleting votes older than ${cutoffDate.toISOString()}`);
+
+    // Delete votes created before yesterday
+    const deleteResult = await VoteModel.deleteMany({
+      created_at: { $lt: cutoffDate },
+    });
+
+    logger.info(`Deleted ${deleteResult.deletedCount} old vote records`);
+
+    // Optional: Compact the collection to reclaim space
+    // try {
+    //   await mongoose.connection.db?.command({ compact: "votes" });
+    //   logger.info("Votes collection compacted successfully");
+    // } catch (compactError) {
+    //   logger.warn(
+    //     "Collection compaction failed (may require admin privileges):",
+    //     compactError
+    //   );
+    // }
+
+    return { deletedCount: deleteResult.deletedCount };
+  } catch (error) {
+    logger.error("Failed to delete old votes:", error);
+    throw error;
   }
 };

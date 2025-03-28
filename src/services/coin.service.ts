@@ -524,6 +524,8 @@ export async function coinBySlugDetails(
       return null;
     }
 
+    // Find the coin position based on todayVotes if there are multiple coins with the same vote count (for example 1) then the rank will be different. Expl: BITCOIN 1 VOTE rank 1 ETHEREUM 1 VOTE rank 2
+
     logger.info(`Successfully retrieved coin with slug: ${slug}`);
     const result = {
       ...coin,

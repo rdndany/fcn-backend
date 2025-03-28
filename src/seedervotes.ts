@@ -4,71 +4,118 @@ import { faker } from "@faker-js/faker";
 import CoinModel, { CoinDocument } from "./models/coin.model";
 import VoteModel, { VoteDocument } from "./models/vote.model";
 
-// Load environment variables from .env file
+// Load environment variables
 dotenv.config();
 
-const seedVotes = async () => {
+const seedVotesAndUpdateCounts = async () => {
   try {
-    // Connect to MongoDB using URI from environment variable
+    // Connect to MongoDB
     await mongoose.connect(process.env.MONGO_URI as string);
     console.log("✅ Connected to MongoDB");
 
-    // Clear existing data from the Vote model
+    // 1. DELETE ALL EXISTING VOTES
     await VoteModel.deleteMany({});
-    console.log("🗑️ Existing votes deleted");
+    console.log("🗑️ All existing votes deleted");
 
-    // Fetch all coins from the Coin collection to get random coin_ids
+    // 2. RESET ALL COINS' VOTE COUNTS TO 0
+    await CoinModel.updateMany(
+      {},
+      {
+        $set: {
+          votes: 0,
+          todayVotes: 0,
+        },
+      }
+    );
+    console.log("🔄 Reset all coins' vote counts to 0");
+
+    // 3. SEED NEW VOTES (using your working approach)
     const coins: CoinDocument[] = await CoinModel.find({});
     if (coins.length === 0) {
       throw new Error("No coins found to seed votes");
     }
 
-    const totalVotes = 0; // Total number of votes to seed
-    const batchSize = 0; // Number of votes to insert in each batch
+    const totalVotes = 50000;
+    const batchSize = 5000;
 
-    // Loop to generate and insert votes in batches
     for (let i = 0; i < totalVotes; i += batchSize) {
       const votes = Array.from({ length: batchSize }).map(() => {
-        // Randomly select a coin from the coins list
         const coin = faker.helpers.arrayElement(coins);
-
-        // Generate a random IP address
         const ip_address = faker.internet.ip();
 
-        // Generate a random date between the start of this year and the current date
-        const startOfYear = new Date(new Date().getFullYear(), 0, 1); // January 1st of this year
-        const randomDate = faker.date.between({
-          from: startOfYear,
-          to: new Date(),
-        });
-        // Prepare the vote object (creating a Mongoose document using `new`)
-        const vote = new VoteModel({
-          coin_id: coin._id, // Reference to the selected coin's ObjectId
-          ip_address: ip_address, // Random IP
-          organic: true, // Always set as true
-          created_at: randomDate, // Random created_at within this year
-        });
+        // Pure UTC date handling
+        const nowUTC = new Date();
+        const sevenDaysAgoUTC = new Date(
+          Date.UTC(
+            nowUTC.getUTCFullYear(),
+            nowUTC.getUTCMonth(),
+            nowUTC.getUTCDate() - 2,
+            0,
+            0,
+            0,
+            0
+          )
+        );
 
-        return vote;
+        // Ensure faker uses UTC
+        const randomDate = new Date(
+          faker.date
+            .between({
+              from: sevenDaysAgoUTC,
+              to: nowUTC,
+            })
+            .toISOString()
+        ); // Convert to ISO string and back to ensure UTC
+
+        return new VoteModel({
+          coin_id: coin._id,
+          ip_address: ip_address,
+          organic: true,
+          created_at: randomDate,
+        });
       });
 
-      // Insert the votes in batches
       await VoteModel.insertMany(votes);
+      console.log(`🚀 Batch ${Math.floor(i / batchSize) + 1} seeded`);
+    }
+
+    // 4. UPDATE VOTE COUNTS FOR EACH COIN
+    console.log("🔄 Updating vote counts for coins...");
+
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    for (const coin of coins) {
+      const totalVotes = await VoteModel.countDocuments({
+        coin_id: coin._id,
+      });
+
+      const todayVotes = await VoteModel.countDocuments({
+        coin_id: coin._id,
+        created_at: { $gte: todayStart },
+      });
+
+      await CoinModel.updateOne(
+        { _id: coin._id },
+        {
+          $set: {
+            votes: totalVotes,
+            todayVotes: todayVotes,
+          },
+        }
+      );
+
       console.log(
-        `🚀 Batch ${
-          Math.floor(i / batchSize) + 1
-        } of votes seeded successfully!`
+        `🪙 Updated ${coin.name}: ${totalVotes} total, ${todayVotes} today`
       );
     }
 
-    // Disconnect from MongoDB
     await mongoose.disconnect();
     console.log("🔌 Database connection closed");
   } catch (error) {
-    console.error("❌ Error seeding votes:", error);
-    process.exit(1); // Exit the process if there's an error
+    console.error("❌ Error:", error);
+    process.exit(1);
   }
 };
 
-// Execute the seeding
-seedVotes();
+seedVotesAndUpdateCounts();
