@@ -152,16 +152,23 @@ export async function fetchVotesToCoins({
   return coinsWithUpdatedFlags;
 }
 
-export const getVotesByCoinIdToday = async (coin_id: string) => {
+export const hasUserVotedForCoinToday = async (
+  coin_id: string,
+  ipAddress: string
+): Promise<boolean> => {
   if (!mongoose.Types.ObjectId.isValid(coin_id)) {
     throw new Error("Invalid coin_id format");
   }
-  // count only today votes , if is > 0 then return true
+
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
-  const votes = await VoteModel.countDocuments({
-    coin_id: coin_id,
+
+  // Optimized: Use countDocuments() instead of find() for better performance
+  const voteCount = await VoteModel.countDocuments({
+    coin_id: new mongoose.Types.ObjectId(coin_id),
+    ip_address: ipAddress,
     created_at: { $gte: todayStart },
   });
-  return votes > 0;
+
+  return voteCount > 0;
 };

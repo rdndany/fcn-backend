@@ -13,8 +13,7 @@ import {
 import { HTTPSTATUS } from "../config/http.config";
 import {
   fetchVotesToCoins,
-  getVotesByCoinId,
-  getVotesByCoinIdToday,
+  hasUserVotedForCoinToday,
 } from "../services/vote.service";
 import mongoose, { Types } from "mongoose";
 import { getAuth } from "@clerk/express";
@@ -580,6 +579,7 @@ export const getCoinBSlugDetails = async (
   try {
     const { slug } = req.params;
     const userId = getAuth(req).userId;
+    const ipAddress = getClientIp(req);
 
     if (!slug) {
       res.status(HTTPSTATUS.BAD_REQUEST).json({
@@ -600,7 +600,10 @@ export const getCoinBSlugDetails = async (
       const isFavorited = await getFavoritedCoinBySlug(slug, userId);
       coinDetails.isFavorited = isFavorited;
 
-      const hasVoted = await getVotesByCoinIdToday(coinId);
+      const hasVoted = await hasUserVotedForCoinToday(
+        coinId,
+        ipAddress as string
+      );
       coinDetails.userVoted = hasVoted;
     }
 
