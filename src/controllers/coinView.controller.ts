@@ -22,10 +22,20 @@ export const trackViewController = async (
 
     // Convert coinId to ObjectId
     const coinIdObjectId = new mongoose.Types.ObjectId(coinId);
-    await trackView(coinIdObjectId, ipAddress as string, userAgent);
 
-    res.status(200).json({ success: true, message: "View tracked" });
-    res.status(200).json({ success: false, message: "Duplicate view" });
+    try {
+      await trackView(coinIdObjectId, ipAddress as string, userAgent);
+      res.status(200).json({ success: true, message: "View tracked" });
+    } catch (error) {
+      // If the error is due to a duplicate view, return success anyway
+      if (error instanceof Error && error.message.includes("duplicate")) {
+        res
+          .status(200)
+          .json({ success: true, message: "View already tracked" });
+      } else {
+        throw error;
+      }
+    }
   } catch (error) {
     console.error("Error tracking view:", error);
     res.status(500).json({ success: false, message: "Failed to track view" });

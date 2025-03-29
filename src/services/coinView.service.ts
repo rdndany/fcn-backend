@@ -8,7 +8,7 @@ import { getCache, redisClient, setCache } from "../config/redis.config";
 const logger = getLogger("trending-coins");
 
 export const trackView = async (
-  coinId: mongoose.Types.ObjectId, // coinId should always be an ObjectId
+  coinId: mongoose.Types.ObjectId,
   ipAddress: string,
   userAgent?: string
 ): Promise<void> => {
@@ -19,17 +19,19 @@ export const trackView = async (
       throw new Error("Invalid coinId");
     }
 
-    // Create or update the CoinView document
+    // Check for existing view within the last 24 hours
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const existingView = await CoinViewModel.findOne({
       coinId: coinId,
       ip_address: ipAddress,
+      created_at: { $gte: twentyFourHoursAgo },
     });
 
     if (existingView) {
       console.log(
         "User has already viewed this coin within the last 24 hours."
       );
-      return; // Skip creating a duplicate view entry
+      throw new Error("duplicate view within 24 hours");
     }
 
     // Track the view by creating a new entry
@@ -37,13 +39,14 @@ export const trackView = async (
       coinId: coinId,
       ip_address: ipAddress,
       user_agent: userAgent,
+      created_at: new Date(),
     });
 
     await newCoinView.save();
     console.log("Coin view tracked successfully.");
   } catch (error) {
     console.error("Error tracking coin view:", error);
-    throw new Error("Failed to track coin view");
+    throw error;
   }
 };
 
