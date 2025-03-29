@@ -544,30 +544,35 @@ export const getCoinBySlug = async (
     const ipAddress = getClientIp(req);
     const userAgent = req.headers["user-agent"];
 
+    console.log("View tracking attempt:", {
+      ipAddress,
+      userAgent,
+      coinId: coinDetails._id,
+    });
+
     if (!ipAddress) {
+      console.log("No IP address found");
       res
         .status(HTTPSTATUS.BAD_REQUEST)
         .json({ message: "IP address not found" });
       return;
     }
 
-    // Only block Node.js user agents, allow all other user agents
-    if (userAgent && userAgent.toLowerCase().includes("node")) {
-      // Don't track the view for Node.js user agents, but still return the coin details
-      res
-        .status(HTTPSTATUS.OK)
-        .json({ ...coinDetails, stats: { total_views: 0, last_24h: 0 } });
-      return;
-    }
-
     // Convert coinDetails._id to ObjectId
     const coinId = new mongoose.Types.ObjectId(coinDetails._id);
-    await trackView(coinId, ipAddress as string, userAgent);
+
+    try {
+      await trackView(coinId, ipAddress as string, userAgent);
+      console.log("View tracked successfully");
+    } catch (error) {
+      console.error("Error tracking view:", error);
+      // Don't fail the request if view tracking fails
+    }
 
     let stats;
     try {
       stats = await getViewStats(coinDetails._id);
-      console.log(stats);
+      console.log("View stats:", stats);
     } catch (error) {
       console.error("Failed to fetch view stats:", error);
       stats = { total_views: 0, last_24h: 0 };

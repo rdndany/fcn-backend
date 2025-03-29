@@ -19,6 +19,12 @@ export const trackView = async (
       throw new Error("Invalid coinId");
     }
 
+    console.log("Attempting to track view:", {
+      coinId: coinId.toString(),
+      ipAddress,
+      userAgent,
+    });
+
     // Check for existing view within the last 24 hours
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const existingView = await CoinViewModel.findOne({
@@ -28,9 +34,7 @@ export const trackView = async (
     });
 
     if (existingView) {
-      console.log(
-        "User has already viewed this coin within the last 24 hours."
-      );
+      console.log("Duplicate view found within 24 hours");
       throw new Error("duplicate view within 24 hours");
     }
 
@@ -43,9 +47,9 @@ export const trackView = async (
     });
 
     await newCoinView.save();
-    console.log("Coin view tracked successfully.");
+    console.log("Successfully saved new view");
   } catch (error) {
-    console.error("Error tracking coin view:", error);
+    console.error("Error in trackView:", error);
     throw error;
   }
 };
