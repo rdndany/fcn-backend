@@ -19,11 +19,58 @@ export const trackView = async (
       throw new Error("Invalid coinId");
     }
 
-    console.log("Attempting to track view:", {
-      coinId: coinId.toString(),
-      ipAddress,
-      userAgent,
-    });
+    // Bot and Node.js detection
+    if (!userAgent) {
+      console.log("No user agent provided, likely a bot");
+      throw new Error("invalid user agent");
+    }
+
+    const userAgentLower = userAgent.toLowerCase();
+
+    // Block common bot user agents and Node.js
+    const blockedAgents = [
+      "node",
+      "bot",
+      "crawler",
+      "spider",
+      "slurp",
+      "baidu",
+      "yandex",
+      "bingbot",
+      "googlebot",
+      "curl",
+      "wget",
+      "axios",
+      "postman",
+      "python",
+      "java",
+      "phantomjs",
+      "selenium",
+      "puppeteer",
+      "playwright",
+    ];
+
+    if (blockedAgents.some((agent) => userAgentLower.includes(agent))) {
+      console.log("Blocked bot/automation user agent:", userAgent);
+      throw new Error("bot detected");
+    }
+
+    // Check for common browser user agents
+    const validBrowsers = [
+      "mozilla",
+      "chrome",
+      "safari",
+      "firefox",
+      "edge",
+      "opera",
+      "msie",
+      "trident",
+    ];
+
+    if (!validBrowsers.some((browser) => userAgentLower.includes(browser))) {
+      console.log("Invalid browser user agent:", userAgent);
+      throw new Error("invalid browser");
+    }
 
     // Check for existing view within the last 24 hours
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -34,7 +81,9 @@ export const trackView = async (
     });
 
     if (existingView) {
-      console.log("Duplicate view found within 24 hours");
+      console.log(
+        "User has already viewed this coin within the last 24 hours."
+      );
       throw new Error("duplicate view within 24 hours");
     }
 
@@ -47,9 +96,9 @@ export const trackView = async (
     });
 
     await newCoinView.save();
-    console.log("Successfully saved new view");
+    console.log("Coin view tracked successfully.");
   } catch (error) {
-    console.error("Error in trackView:", error);
+    console.error("Error tracking coin view:", error);
     throw error;
   }
 };

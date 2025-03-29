@@ -544,41 +544,14 @@ export const getCoinBySlug = async (
     const ipAddress = getClientIp(req);
     const userAgent = req.headers["user-agent"];
 
-    console.log("View tracking attempt:", {
-      ipAddress,
-      userAgent,
-      coinId: coinDetails._id,
-    });
-
     if (!ipAddress) {
-      console.log("No IP address found");
       res
         .status(HTTPSTATUS.BAD_REQUEST)
         .json({ message: "IP address not found" });
       return;
     }
 
-    // Convert coinDetails._id to ObjectId
-    const coinId = new mongoose.Types.ObjectId(coinDetails._id);
-
-    try {
-      await trackView(coinId, ipAddress as string, userAgent);
-      console.log("View tracked successfully");
-    } catch (error) {
-      console.error("Error tracking view:", error);
-      // Don't fail the request if view tracking fails
-    }
-
-    let stats;
-    try {
-      stats = await getViewStats(coinDetails._id);
-      console.log("View stats:", stats);
-    } catch (error) {
-      console.error("Failed to fetch view stats:", error);
-      stats = { total_views: 0, last_24h: 0 };
-    }
-
-    res.status(HTTPSTATUS.OK).json({ ...coinDetails, stats });
+    res.status(HTTPSTATUS.OK).json({ ...coinDetails });
   } catch (error) {
     console.error("Error in getCoinBySlug:", error);
     res
@@ -595,6 +568,7 @@ export const getCoinBSlugDetails = async (
     const { slug } = req.params;
     const userId = getAuth(req).userId;
     const ipAddress = getClientIp(req);
+    const userAgent = req.headers["user-agent"];
 
     if (!slug) {
       res.status(HTTPSTATUS.BAD_REQUEST).json({
@@ -603,12 +577,30 @@ export const getCoinBSlugDetails = async (
       return;
     }
 
-    const coinDetails = await coinBySlugDetails(slug); // You'll need to implement coinById
+    const coinDetails = await coinBySlugDetails(slug);
     if (!coinDetails) {
       res.status(HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
       return;
     }
-    const coinId = coinDetails?._id;
+
+    // Track view
+    const coinId = new mongoose.Types.ObjectId(coinDetails._id);
+    try {
+      await trackView(coinId, ipAddress as string, userAgent);
+      console.log("View tracked successfully");
+    } catch (error) {
+      console.error("Error tracking view:", error);
+      // Don't fail the request if view tracking fails
+    }
+
+    let stats;
+    try {
+      stats = await getViewStats(coinDetails._id.toString());
+      console.log("View stats:", stats);
+    } catch (error) {
+      console.error("Failed to fetch view stats:", error);
+      stats = { total_views: 0, last_24h: 0 };
+    }
 
     if (userId) {
       // check if the coin is favorited
@@ -616,18 +608,13 @@ export const getCoinBSlugDetails = async (
       coinDetails.isFavorited = isFavorited;
 
       const hasVoted = await hasUserVotedForCoinToday(
-        coinId,
+        coinId.toString(),
         ipAddress as string
       );
       coinDetails.userVoted = hasVoted;
     }
 
-    if (!coinDetails) {
-      res.status(HTTPSTATUS.NOT_FOUND).json({ message: "Coin not found" });
-      return;
-    }
-
-    res.status(HTTPSTATUS.OK).json({ ...coinDetails });
+    res.status(HTTPSTATUS.OK).json({ ...coinDetails, stats });
   } catch (error) {
     console.error("Error in coinBySlugDetails:", error);
     res
